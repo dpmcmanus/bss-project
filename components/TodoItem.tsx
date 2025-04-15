@@ -10,8 +10,6 @@ import { useOptimistic } from "react";
 export function TodoItem({ todo }: { todo: Todo }) {
     const [isLoading, setIsLoading] = useState(false);
 
-    // The updater function is defined to accept either a boolean (for a delta update)
-    // or a full Todo object to replace the current state.
     const [localTodo, updateOptimisticTodo] = useOptimistic<Todo, boolean | Todo>(
         todo,
         (prev, diff) => {
@@ -22,23 +20,23 @@ export function TodoItem({ todo }: { todo: Todo }) {
     async function handleToggle() {
         const newCompleted = !localTodo.completed;
       
-        // Optimistically update by passing a boolean.
-        updateOptimisticTodo(newCompleted);
-  
+        // Optimistically update the state with the full object
+        updateOptimisticTodo({ ...localTodo, completed: newCompleted });
+      
         setIsLoading(true);
         try {
-            // Call the server action to toggle the todo.
-            const updatedTodo = await toggleTodo(localTodo.id);
-            // Replace the optimistic state with the full updated Todo from the server.
-            updateOptimisticTodo(updatedTodo);
+          // Call the server action to toggle the todo
+          const updatedTodo = await toggleTodo(localTodo.id);
+          // Update the optimistic state with the full updated object from the server
+          updateOptimisticTodo(updatedTodo);
         } catch (error) {
-            console.error("Error toggling todo, reverting optimistic update", error);
-            // Revert the optimistic update by passing a boolean for the opposite value.
-            updateOptimisticTodo(!newCompleted);
+          console.error("Error toggling todo, reverting optimistic update", error);
+          // Revert the optimistic update on error by restoring the previous completed value
+          updateOptimisticTodo({ ...localTodo, completed: localTodo.completed });
         } finally {
-            setIsLoading(false);
+          setIsLoading(false);
         }
-    }
+      }
 
     return (
         <li className="flex items-center gap-2 rounded-lg border px-4 py-2">
