@@ -41,7 +41,6 @@ export async function createTodo(title: string) {
 }
 
 export async function toggleTodo(id: string) {
-    /* YOUR CODE HERE */
     await new Promise((resolve => setTimeout(resolve, 1000)));
 
     const session = await auth.api.getSession({
@@ -68,7 +67,9 @@ export async function toggleTodo(id: string) {
     if (updatedTodo.length === 0) {
         throw new Error("Todo not found or you do not have permission to toggle it.")
     }
-
+    
+    revalidatePath("/todos");
+    
     return updatedTodo[0]
 }
 

@@ -5,46 +5,60 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 import { toggleTodo } from "@/actions/todos";
 import { useState } from "react";
-import { useOptimistic } from "react";
+import { useOptimistic, useTransition } from "react";
 
 export function TodoItem({ todo }: { todo: Todo }) {
+    // Use transition to track server action state
+    const [isPending, startTransition] = useTransition();
+    
+    // Track the local loading state separately
     const [isLoading, setIsLoading] = useState(false);
 
-    // Simplified optimistic update strategy - only track the completed state change
-    const [optimisticTodo, updateOptimisticTodo] = useOptimistic<Todo, boolean>(
+    // Use the optimistic version of the todo
+    const [optimisticTodo, setOptimisticTodo] = useOptimistic(
         todo,
-        (prev, completed) => {
-            return { ...prev, completed };
-        }
+        (state, newCompleted: boolean) => ({
+            ...state,
+            completed: newCompleted
+        })
     );
   
-    async function handleToggle() {
-        // Calculate the new completed state
+    function handleToggle() {
         const newCompleted = !optimisticTodo.completed;
-      
-        // Optimistically update the state by passing only the boolean value
-        updateOptimisticTodo(newCompleted);
-      
+        
+        // Update optimistically first
+        setOptimisticTodo(newCompleted);
+        
+        // Set loading state
         setIsLoading(true);
-        try {
-            const updatedTodo = await toggleTodo(optimisticTodo.id);
-            if (updatedTodo && updatedTodo.completed !== newCompleted) {
-                updateOptimisticTodo(updatedTodo.completed);
+        
+        // Use transition for the server action
+        startTransition(async () => {
+            try {
+                // The server action should return the updated todo
+                const result = await toggleTodo(optimisticTodo.id);
+                
+                // No need to update state here as the server component
+                // will re-render with the latest data
+            } catch (error) {
+                console.error("Error toggling todo:", error);
+                // Only revert on error
+                setOptimisticTodo(!newCompleted);
+            } finally {
+                setIsLoading(false);
             }
-        } catch (error) {
-            console.error("Error toggling todo, reverting optimistic update", error);
-            updateOptimisticTodo(!newCompleted);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     }
+
+    // Use the combined loading state
+    const isDisabled = isLoading || isPending;
 
     return (
         <li className="flex items-center gap-2 rounded-lg border px-4 py-2">
             <Checkbox
                 checked={optimisticTodo.completed}
                 onCheckedChange={handleToggle}
-                disabled={isLoading} 
+                disabled={isDisabled} 
             />
             <span className={`flex-1 ${optimisticTodo.completed ? "line-through text-muted-foreground" : ""}`}>
                 {optimisticTodo.title}
