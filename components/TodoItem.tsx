@@ -8,30 +8,35 @@ import { useState } from "react";
 import { useOptimistic } from "react";
 
 export function TodoItem({ todo }: { todo: Todo }) {
-    const [isLoading, setIsLoading] = useState(false)
+    const [isLoading, setIsLoading] = useState(false);
 
-    // useOptimistic
-    const [localTodo, setLocalTodo] = useOptimistic(
+    // The updater function is defined to accept either a boolean (for a delta update)
+    // or a full Todo object to replace the current state.
+    const [localTodo, updateOptimisticTodo] = useOptimistic<Todo, boolean | Todo>(
         todo,
-        (state, newCompleted: boolean) => ({ ...state, completed: newCompleted })
-    )
-
+        (prev, diff) => {
+            return typeof diff === "boolean" ? { ...prev, completed: diff } : diff;
+        }
+    );
+  
     async function handleToggle() {
-        const newCompleted = !localTodo.completed
-
-        // Optimistically update the state
-        setLocalTodo(newCompleted)
-
-        setIsLoading(true)
+        const newCompleted = !localTodo.completed;
+      
+        // Optimistically update by passing a boolean.
+        updateOptimisticTodo(newCompleted);
+  
+        setIsLoading(true);
         try {
-            // Call the toggleTodo server action
-            const updated = await toggleTodo(localTodo.id)
-            setLocalTodo(newCompleted)
+            // Call the server action to toggle the todo.
+            const updatedTodo = await toggleTodo(localTodo.id);
+            // Replace the optimistic state with the full updated Todo from the server.
+            updateOptimisticTodo(updatedTodo);
         } catch (error) {
-            console.error("Error toggling todo, reverting optimistic update", error)
-            setLocalTodo(!newCompleted)
+            console.error("Error toggling todo, reverting optimistic update", error);
+            // Revert the optimistic update by passing a boolean for the opposite value.
+            updateOptimisticTodo(!newCompleted);
         } finally {
-            setIsLoading(false)
+            setIsLoading(false);
         }
     }
 

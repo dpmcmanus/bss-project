@@ -55,12 +55,12 @@ export async function toggleTodo(id: string) {
     const updatedTodo = await db
         .update(todos)
         .set({
-            completed: sql`NOT ${todos.completed}`, // Toggle the completed status
+            completed: sql`NOT ${todos.completed}`, 
         })
         .where(
             and(
                 eq(todos.id, id),
-                eq(todos.userId, session.user.id) // Ensure the Todo belongs to the user
+                eq(todos.userId, session.user.id) 
             )
         )
         .returning()

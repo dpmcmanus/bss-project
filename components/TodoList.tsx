@@ -37,6 +37,7 @@ export function TodoList({ todos }: { todos: Todo[] }) {
       createdAt: new Date(),
       updatedAt: new Date(),
     }
+    setTitle("") // Clear the input field.
     // Optimistically update the UI with the placeholder todo.
     setOptimisticTodos((prev) => [...prev, placeholderTodo])
     setIsLoading(true)
@@ -58,9 +59,6 @@ export function TodoList({ todos }: { todos: Todo[] }) {
     } finally {
       setIsLoading(false)
     }
-
-    // Clear the input field by resetting the title state.
-    setTitle("")
   }
 
   return (
