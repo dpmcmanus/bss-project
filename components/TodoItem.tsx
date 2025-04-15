@@ -26,7 +26,7 @@ export function TodoItem({ todo }: { todo: Todo }) {
         try {
             // Call the toggleTodo server action
             const updated = await toggleTodo(localTodo.id)
-            setLocalTodo(updated.completed)
+            setLocalTodo(newCompleted)
         } catch (error) {
             console.error("Error toggling todo, reverting optimistic update", error)
             setLocalTodo(!newCompleted)
