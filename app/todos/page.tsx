@@ -4,6 +4,9 @@ import { todos as todosTable, Todo } from "@/database/schema"
 import { auth } from "@/lib/auth"
 import { headers } from "next/headers";
 
+import { db } from "@/database/db";
+import { eq, desc } from "drizzle-orm";
+
 export default async function TodosPage() {
 
     const session = await auth.api.getSession({
@@ -20,33 +23,22 @@ export default async function TodosPage() {
         );
       }
 
-    const todos: Todo[] = [
-        {
-            id: "qwerty",
-            title: "Read React docs",
-            completed: true,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            userId: "xyz"
-        },
-        {
-            id: "uiop[]",
-            title: "Read Next.js docs",
-            completed: false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            userId: "xyz"
-        },
-        {
-            id: "abcdefg",
-            title: "Finish CS 5356 homework",
-            completed: false,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            userId: "xyz"
-        }
-        
-    ]
+    // Query todos from the DB where the owner is the authenticated user.
+    const todos: Todo[] = await db.query.todos.findMany({
+        where: eq(todosTable.userId, session.user.id),
+        orderBy: [desc(todosTable.createdAt)],
+    });
+
+    // Check if the user has any todos
+    if (todos.length === 0) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-black">
+                <p className="text-xl font-medium text-center text-white">
+                    No todos found. Add some todos!
+                </p>
+            </div>
+        );
+    }
 
     return (
         <main className="py-8 px-4">
