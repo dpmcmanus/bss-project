@@ -1,6 +1,6 @@
 "use server"
 
-import { eq } from "drizzle-orm"
+import { sql, eq, and } from "drizzle-orm"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
 
@@ -40,8 +40,36 @@ export async function createTodo(title: string) {
     return newTodo;
 }
 
-export async function toggleTodo(/* */) {
+export async function toggleTodo(id: string) {
     /* YOUR CODE HERE */
+    await new Promise((resolve => setTimeout(resolve, 1000)));
+
+    const session = await auth.api.getSession({
+        headers: await headers(),
+    });
+    if (!session) {
+        throw new Error("Sign in to toggle a todo.");
+    }
+
+    // Perform a single query to verify ownership and toggle the Todo
+    const updatedTodo = await db
+        .update(todos)
+        .set({
+            completed: sql`NOT ${todos.completed}`, // Toggle the completed status
+        })
+        .where(
+            and(
+                eq(todos.id, id),
+                eq(todos.userId, session.user.id) // Ensure the Todo belongs to the user
+            )
+        )
+        .returning()
+
+    if (updatedTodo.length === 0) {
+        throw new Error("Todo not found or you do not have permission to toggle it.")
+    }
+
+    return updatedTodo[0]
 }
 
 export async function deleteTodo(formData: FormData) {
