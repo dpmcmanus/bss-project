@@ -28,7 +28,7 @@ export function TodoList({ todos }: { todos: Todo[] }) {
         return
       }
   
-      // Optimistic update: Add a placeholder todo with all required fields.
+      // Optimistic update
       const placeholderTodo: Todo = {
         id: `temp-${Date.now()}`,
         title,
@@ -70,6 +70,7 @@ export function TodoList({ todos }: { todos: Todo[] }) {
             name="title"
             placeholder="Add a new todo..."
             className={error ? "border-red-500" : ""}
+            disabled={isLoading}
           />
           <Button type="submit" disabled={isLoading}>
             {isLoading ? "Adding..." : "Add"}
