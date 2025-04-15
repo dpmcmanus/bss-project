@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toggleTodo } from "@/actions/todos";
 import { useState } from "react";
 import { useOptimistic, useTransition } from "react";
+import { revalidatePath } from "next/cache";
 
 export function TodoItem({ todo }: { todo: Todo }) {
     // Use transition to track server action state
@@ -52,6 +53,8 @@ export function TodoItem({ todo }: { todo: Todo }) {
 
     // Use the combined loading state
     const isDisabled = isLoading || isPending;
+
+    revalidatePath("/todos");
 
     return (
         <li className="flex items-center gap-2 rounded-lg border px-4 py-2">
