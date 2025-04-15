@@ -21,7 +21,7 @@ export async function createTodo(title: string) {
     }
     
     // Validate the title using the Zod schema; this will throw if the title is empty.
-    insertTodoSchema.parse({ title });
+    insertTodoSchema.pick({ title: true }).parse({ title });
     
     // Simulate a network delay (for optimistic UI demonstration)
     await new Promise((resolve) => setTimeout(resolve, 1000));
