@@ -6,11 +6,28 @@ import { todos } from "@/database/schema"
 import { Button } from "@/components/ui/button"
 import { deleteTodo } from "@/actions/todos"
 
+import { auth } from "@/lib/auth"
+import { headers } from "next/headers"
+
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPage() {
     
     /* YOUR AUTHORIZATION CHECK HERE */
+    const session = await auth.api.getSession({
+        headers: await headers(),
+    });
+
+    if (!session) {
+        return (
+          <div className="flex items-center justify-center min-h-screen bg-black">
+            <p className="text-xl font-medium text-center text-white">
+              Please sign in for admin page.
+            </p>
+          </div>
+        );
+      }
+      
 
     const allTodos = await db.query.todos.findMany({
         with: {
