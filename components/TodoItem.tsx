@@ -27,8 +27,6 @@ export function TodoItem({ todo }: { todo: Todo }) {
         try {
           // Call the server action to toggle the todo
           const updatedTodo = await toggleTodo(localTodo.id);
-          // Update the optimistic state with the full updated object from the server
-          updateOptimisticTodo(updatedTodo);
         } catch (error) {
           console.error("Error toggling todo, reverting optimistic update", error);
           // Revert the optimistic update on error by restoring the previous completed value
