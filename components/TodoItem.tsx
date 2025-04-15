@@ -5,38 +5,44 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 import { toggleTodo } from "@/actions/todos";
 import { useState } from "react";
-import { useOptimistic, useTransition } from "react";
+import { useOptimistic, useTransition, useEffect } from "react";
 
 export function TodoItem({ todo }: { todo: Todo }) {
     const [isPending, startTransition] = useTransition();
     const [isLoading, setIsLoading] = useState(false);
   
-    // Initialize optimistic state. The updater function is prepared to merge a boolean delta.
-    const [localTodo, setLocalTodo] = useOptimistic<Todo, Todo | boolean>(
+    // Initialize optimistic state with the original todo
+    const [localTodo, setLocalTodo] = useOptimistic<Todo, { completed?: boolean }>(
       todo,
-      (prev, update) =>
-        typeof update === "boolean" ? { ...prev, completed: update } : update
+      (prev, optimisticValue) => ({
+        ...prev,
+        ...optimisticValue,
+      })
     );
+    
+    // Keep localTodo in sync with parent-provided todo
+    useEffect(() => {
+      if (!isPending && !isLoading) {
+        setLocalTodo(todo);
+      }
+    }, [todo, isPending, isLoading]);
   
     async function handleToggle() {
       const newCompleted = !localTodo.completed;
   
-      // Optimistically update the state with a new Todo object (not just a boolean)
-      setLocalTodo({ ...localTodo, completed: newCompleted });
+      // Only update the completed property optimistically
+      setLocalTodo({ completed: newCompleted });
   
       setIsLoading(true);
       startTransition(async () => {
         try {
-          // Call the server action to toggle the todo; expect a full Todo object back.
-          const updatedTodo = await toggleTodo(localTodo.id);
-          // Use the server response to update the optimistic state.
-          setLocalTodo(updatedTodo);
+            await toggleTodo(localTodo.id);
         } catch (error) {
-          console.error("Error toggling todo, reverting optimistic update", error);
-          // Revert to the previous state in case of error.
-          setLocalTodo({ ...localTodo, completed: !newCompleted });
+            console.error("Error toggling todo, reverting optimistic update", error);
+            // Revert optimistic update in case of error
+            setLocalTodo({ completed: !newCompleted });
         } finally {
-          setIsLoading(false);
+            setIsLoading(false);
         }
       });
     }
@@ -55,4 +61,4 @@ export function TodoItem({ todo }: { todo: Todo }) {
         </span>
       </li>
     );
-  }
+}
