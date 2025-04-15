@@ -10,41 +10,44 @@ import { useOptimistic } from "react";
 export function TodoItem({ todo }: { todo: Todo }) {
     const [isLoading, setIsLoading] = useState(false);
 
-    const [localTodo, updateOptimisticTodo] = useOptimistic<Todo, boolean | Todo>(
+    // Simplified optimistic update strategy - only track the completed state change
+    const [optimisticTodo, updateOptimisticTodo] = useOptimistic<Todo, boolean>(
         todo,
-        (prev, diff) => {
-            return typeof diff === "boolean" ? { ...prev, completed: diff } : diff;
+        (prev, completed) => {
+            return { ...prev, completed };
         }
     );
   
     async function handleToggle() {
-        const newCompleted = !localTodo.completed;
+        // Calculate the new completed state
+        const newCompleted = !optimisticTodo.completed;
       
-        // Optimistically update the state with the full object
-        updateOptimisticTodo({ ...localTodo, completed: newCompleted });
+        // Optimistically update the state by passing only the boolean value
+        updateOptimisticTodo(newCompleted);
       
         setIsLoading(true);
         try {
-          // Call the server action to toggle the todo
-          const updatedTodo = await toggleTodo(localTodo.id);
+            const updatedTodo = await toggleTodo(optimisticTodo.id);
+            if (updatedTodo && updatedTodo.completed !== newCompleted) {
+                updateOptimisticTodo(updatedTodo.completed);
+            }
         } catch (error) {
-          console.error("Error toggling todo, reverting optimistic update", error);
-          // Revert the optimistic update on error by restoring the previous completed value
-          updateOptimisticTodo({ ...localTodo, completed: localTodo.completed });
+            console.error("Error toggling todo, reverting optimistic update", error);
+            updateOptimisticTodo(!newCompleted);
         } finally {
-          setIsLoading(false);
+            setIsLoading(false);
         }
-      }
+    }
 
     return (
         <li className="flex items-center gap-2 rounded-lg border px-4 py-2">
             <Checkbox
-                checked={localTodo.completed}
+                checked={optimisticTodo.completed}
                 onCheckedChange={handleToggle}
                 disabled={isLoading} 
             />
-            <span className={`flex-1 ${localTodo.completed ? "line-through text-muted-foreground" : ""}`}>
-                {localTodo.title}
+            <span className={`flex-1 ${optimisticTodo.completed ? "line-through text-muted-foreground" : ""}`}>
+                {optimisticTodo.title}
             </span>
         </li>
     )
