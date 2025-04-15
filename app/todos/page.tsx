@@ -29,17 +29,6 @@ export default async function TodosPage() {
         orderBy: [desc(todosTable.createdAt)],
     });
 
-    // Check if the user has any todos
-    if (todos.length === 0) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-black">
-                <p className="text-xl font-medium text-center text-white">
-                    No todos found. Add some todos!
-                </p>
-            </div>
-        );
-    }
-
     return (
         <main className="py-8 px-4">
             <section className="container mx-auto">
