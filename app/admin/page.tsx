@@ -21,7 +21,7 @@ export default async function AdminPage() {
     if (!session) {
         return (
           <div className="flex items-center justify-center min-h-screen bg-black">
-            <p className="text-xl font-medium text-center text-white">
+            <p className="text-xl font-medium text-center text-white"> 
               Please sign in for admin page.
             </p>
           </div>
