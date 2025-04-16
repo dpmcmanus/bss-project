@@ -22,7 +22,7 @@ export async function Header() {
                 <Link href="/todos">
                   <Button variant="ghost">Todos</Button>
                 </Link>
-                {session && session.user.role === "admin" && <AdminNavEntry />}
+                {session && session.user.role === "admin" && <AdminNavEntry />} 
               </nav>
             </div>
             <UserButton />
