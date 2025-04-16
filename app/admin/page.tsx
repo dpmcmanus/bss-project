@@ -26,8 +26,11 @@ export default async function AdminPage() {
             </p>
           </div>
         );
-      }
-      
+    }
+
+    if (session.user.role !== "admin") {
+        return null;
+    }
 
     const allTodos = await db.query.todos.findMany({
         with: {

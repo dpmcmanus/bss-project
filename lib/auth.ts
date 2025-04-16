@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth"
+import { admin } from "better-auth/plugins"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 
 import { db } from "@/database/db"
@@ -24,6 +25,7 @@ export const auth = betterAuth({
         enabled: true
     },
     plugins: [
+        admin(), // add admin plugin
         nextCookies() // keep this last in `plugins` array
     ]
 })

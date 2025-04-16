@@ -75,9 +75,20 @@ export async function toggleTodo(id: string) {
 
 export async function deleteTodo(formData: FormData) {
     /* YOUR AUTHORIZATION CHECK HERE */
+
+    const session = await auth.api.getSession({
+        headers: await headers(),
+    });
+
+    if (!session) {
+        throw new Error("You must be signed in to delete a todo.");
+    }
+
     const id = formData.get("id") as string;
-    await db.delete(todos)
-        .where(eq(todos.id, id));
+    if (session && session.user.role == "admin") {
+        await db.delete(todos)
+            .where(eq(todos.id, id));
+    }
 
     revalidatePath("/admin");
 }
