@@ -7,7 +7,6 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
 import { db } from "@/database/db"
 import { todos, insertTodoSchema } from "@/database/schema"
-import type { Todo } from "@/database/schema"
 
 export async function createTodo(title: string) {
     /* YOUR CODE HERE */
@@ -70,7 +69,7 @@ export async function toggleTodo(id: string) {
     
     revalidatePath("/todos");
     
-    return updatedTodo[0]
+    return updatedTodo[0];
 }
 
 export async function deleteTodo(formData: FormData) {
