@@ -10,24 +10,21 @@ import { todos, insertTodoSchema } from "@/database/schema"
 
 export async function createTodo(title: string) {
     /* YOUR CODE HERE */
-    // Retrieve the session via the request headers.
+    
     const session = await auth.api.getSession({
         headers: await headers(),
     });
-
     if (!session) {
         throw new Error("You must be signed in to add a todo.");
     }
 
-    // Validate the title using the Zod schema,
-    // but only validate the title property so that userId isn't expected.
+    // Validate the title using the Zod schema
     insertTodoSchema.pick({ title: true }).parse({ title });
 
-    // Simulate a delay for testing optimistic UI updates.
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // // Simulate a delay for testing optimistic UI updates.
+    // await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Insert the new Todo into the database.
-    // Defaults for completed, createdAt, and updatedAt come from your schema.
+    // Insert new Todo into the database
     const [newTodo] = await db
         .insert(todos)
         .values({
@@ -49,7 +46,6 @@ export async function toggleTodo(id: string) {
         throw new Error("Sign in to toggle a todo.");
     }
 
-    // Perform a single query to verify ownership and toggle the Todo
     const updatedTodo = await db
         .update(todos)
         .set({
@@ -68,8 +64,6 @@ export async function toggleTodo(id: string) {
     }
     
     revalidatePath("/todos");
-    
-    return updatedTodo[0];
 }
 
 export async function deleteTodo(formData: FormData) {

@@ -16,7 +16,10 @@
         "db:migrate-production": "NODE_ENV=production drizzle-kit migrate",
         "db:studio": "drizzle-kit studio",
         "lint": "next lint",
-        "lint:fix": "next lint --fix"
+        "lint:fix": "next lint --fix",
+        "db:push": "drizzle-kit push",
+        "db:export": "drizzle-kit export",
+        "db:pull": "drizzle-kit pull"
     },
     "dependencies": {
         "@daveyplate/better-auth-tanstack": "^1.2.31",
