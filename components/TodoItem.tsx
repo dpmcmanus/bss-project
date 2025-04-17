@@ -15,19 +15,19 @@ export function TodoItem({ todo }: { todo: Todo }) {
         startTransition(async () => {
             await toggleTodo(todo.id);
         });
-      }
-  
+    }
+
     return (
-      <li className="flex items-center gap-2 rounded-lg border px-4 py-2">
+        <li className="flex items-center gap-2 rounded-lg border px-4 py-2">
         <Checkbox
         //   checked={todo.completed}
-          onCheckedChange={handleToggle}
-          disabled={isPending}
-          defaultChecked={todo.completed}
+            onCheckedChange={handleToggle}
+            disabled={isPending}
+            defaultChecked={todo.completed}
         />
         <span className={`flex-1 ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
-          {todo.title}
+            {todo.title}
         </span>
-      </li>
+        </li>
     );
   }
