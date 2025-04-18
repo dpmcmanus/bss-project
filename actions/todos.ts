@@ -37,8 +37,6 @@ export async function createTodo(title: string) {
 }
 
 export async function toggleTodo(id: string) {
-    await new Promise((resolve => setTimeout(resolve, 1000)));
-
     const session = await auth.api.getSession({
         headers: await headers(),
     });
