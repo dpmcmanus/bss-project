@@ -27,10 +27,10 @@ const SignIn = () => {
     try {
       await signIn(email, password);
       navigate(from, { replace: true });
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Sign in failed",
-        description: "Please check your credentials and try again.",
+        description: error.message || "Please check your credentials and try again.",
         variant: "destructive",
       });
     } finally {

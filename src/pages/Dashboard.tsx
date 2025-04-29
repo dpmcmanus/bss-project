@@ -1,73 +1,216 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import ClubCard from "@/components/ClubCard";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-
-// Mock data for clubs
-const mockClubs = [
-  {
-    id: "1",
-    name: "Science Fiction Lovers",
-    description: "A club dedicated to exploring the vast worlds of science fiction literature.",
-    memberCount: 4,
-    isPublic: true,
-    currentBook: {
-      title: "Dune",
-      author: "Frank Herbert",
-      progress: 45,
-      goal: {
-        chapter: 10,
-        date: "May 14"
-      }
-    }
-  },
-  {
-    id: "2",
-    name: "Mystery & Thriller Club",
-    description: "For those who enjoy page-turning suspense and clever mysteries.",
-    memberCount: 3,
-    isPublic: false,
-    currentBook: {
-      title: "The Silent Patient",
-      author: "Alex Michaelides",
-      progress: 65,
-      goal: {
-        chapter: 2,
-        date: "May 17"
-      }
-    }
-  }
-];
+import { supabase } from "@/integrations/supabase/client";
 
 const Dashboard = () => {
+  const { user, profile, isLoading: authLoading } = useAuth();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newClub, setNewClub] = useState({
     name: "",
     description: "",
     isPublic: true
   });
+  const [myClubs, setMyClubs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
-
-  const handleCreateClub = () => {
-    toast({
-      title: "Club created",
-      description: `${newClub.name} has been created successfully.`,
-    });
+  
+  useEffect(() => {
+    if (user) {
+      fetchMyClubs();
+    }
+  }, [user]);
+  
+  const fetchMyClubs = async () => {
+    if (!user) return;
     
-    setNewClub({
-      name: "",
-      description: "",
-      isPublic: true
-    });
-    
-    setIsCreateDialogOpen(false);
+    try {
+      setIsLoading(true);
+      console.log("Fetching clubs for user:", user.id);
+      
+      // Get clubs where user is a member
+      const { data: memberData, error: memberError } = await supabase
+        .from('club_members')
+        .select('club_id')
+        .eq('profile_id', user.id);
+        
+      if (memberError) {
+        console.error("Error fetching club memberships:", memberError);
+        throw memberError;
+      }
+      
+      // If no memberships, return empty array
+      if (!memberData || memberData.length === 0) {
+        setMyClubs([]);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Get club ids from memberships
+      const clubIds = memberData.map(item => item.club_id);
+      
+      // Fetch club details
+      const { data: clubsData, error: clubsError } = await supabase
+        .from('clubs')
+        .select('*')
+        .in('id', clubIds);
+        
+      if (clubsError) {
+        console.error("Error fetching clubs:", clubsError);
+        throw clubsError;
+      }
+      
+      // Process clubs and fetch additional data
+      const clubsWithData = await Promise.all(
+        clubsData.map(async (club) => {
+          // Get member count
+          const { count: memberCount, error: countError } = await supabase
+            .from('club_members')
+            .select('*', { count: 'exact', head: true })
+            .eq('club_id', club.id);
+          
+          if (countError) {
+            console.error("Error fetching member count:", countError);
+          }
+            
+          // Get current book
+          const { data: bookData, error: bookError } = await supabase
+            .from('club_books')
+            .select(`
+              book:books (
+                id,
+                title,
+                author
+              ),
+              goal_chapter,
+              goal_date
+            `)
+            .eq('club_id', club.id)
+            .eq('is_current_book', true)
+            .maybeSingle();
+          
+          if (bookError && bookError.code !== 'PGRST116') {
+            console.error("Error fetching book data:", bookError);
+          }
+            
+          return {
+            id: club.id,
+            name: club.name,
+            description: club.description,
+            isPublic: club.is_public,
+            memberCount: memberCount || 0,
+            currentBook: bookData ? {
+              id: bookData.book.id,
+              title: bookData.book.title,
+              author: bookData.book.author,
+              progress: 0,
+              goal: bookData.goal_chapter ? {
+                chapter: bookData.goal_chapter,
+                date: new Date(bookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              } : undefined
+            } : undefined
+          };
+        })
+      );
+      
+      setMyClubs(clubsWithData.filter(Boolean));
+    } catch (error) {
+      console.error("Error fetching clubs:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load your book clubs.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+  
+  const handleCreateClub = async () => {
+    try {
+      if (!user?.id) return;
+      
+      // Create a new club
+      const { data: clubData, error: clubError } = await supabase
+        .from('clubs')
+        .insert({
+          name: newClub.name,
+          description: newClub.description,
+          is_public: newClub.isPublic,
+          created_by: user.id
+        })
+        .select()
+        .single();
+        
+      if (clubError) throw clubError;
+      
+      // After club creation, a trigger will automatically add the creator as a member
+      // But we'll add it manually to ensure it works in all cases
+      const { error: memberError } = await supabase
+        .from('club_members')
+        .insert({
+          club_id: clubData.id,
+          profile_id: user.id,
+          is_admin: true
+        });
+        
+      if (memberError) {
+        console.error("Error adding member:", memberError);
+        // We don't throw since the club was created successfully
+        // Just log and continue
+      }
+      
+      toast({
+        title: "Club created",
+        description: `${newClub.name} has been created successfully.`,
+      });
+      
+      setNewClub({
+        name: "",
+        description: "",
+        isPublic: true
+      });
+      
+      setIsCreateDialogOpen(false);
+      
+      // Refresh clubs list
+      fetchMyClubs();
+    } catch (error) {
+      console.error("Error creating club:", error);
+      toast({
+        title: "Error",
+        description: "Failed to create the club. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Show loading state if auth is still loading
+  if (authLoading) {
+    return <div className="flex items-center justify-center h-64">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-book-600 mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Loading your profile...</p>
+      </div>
+    </div>;
+  }
+
+  // Show error state if no user or profile
+  if (!user) {
+    return <div className="text-center p-8">
+      <p className="text-muted-foreground mb-4">You need to be logged in to view this page.</p>
+      <Button onClick={() => window.location.href = '/signin'}>Sign In</Button>
+    </div>;
+  }
 
   return (
     <div className="animate-fade-in">
@@ -87,6 +230,9 @@ const Dashboard = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create a New Book Club</DialogTitle>
+              <DialogDescription>
+                Create a club and invite others to join your reading journey.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
@@ -133,11 +279,25 @@ const Dashboard = () => {
 
       <div className="mb-12">
         <h2 className="text-lg font-semibold mb-4">My Clubs</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mockClubs.map((club) => (
-            <ClubCard key={club.id} {...club} />
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="flex justify-center p-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-book-600 mx-auto mb-4"></div>
+              <p>Loading your clubs...</p>
+            </div>
+          </div>
+        ) : myClubs.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {myClubs.map((club) => (
+              <ClubCard key={club.id} {...club} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center p-8 border rounded-lg">
+            <p className="text-muted-foreground mb-4">You're not a member of any clubs yet.</p>
+            <Button onClick={() => setIsCreateDialogOpen(true)}>Create Your First Club</Button>
+          </div>
+        )}
       </div>
     </div>
   );

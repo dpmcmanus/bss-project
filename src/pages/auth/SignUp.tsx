@@ -23,15 +23,18 @@ const SignUp = () => {
 
     try {
       await signUp(name, email, password);
+      // We don't immediately redirect since the user might need to confirm their email
+      // depending on Supabase settings. The AuthContext will handle the redirect after
+      // authentication completes.
       toast({
         title: "Account created",
         description: "Your account has been created successfully.",
       });
-      navigate("/dashboard");
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Signup error:", error);
       toast({
         title: "Sign up failed",
-        description: "Please try again with different information.",
+        description: error.message || "Please try again with different information.",
         variant: "destructive",
       });
     } finally {

@@ -1,5 +1,5 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -7,76 +7,220 @@ import { Textarea } from "@/components/ui/textarea";
 import { BookOpen, Star } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
-// Mock data for completed books
-const mockCompletedBooks = [
-  {
-    id: "1",
-    title: "Foundation",
-    author: "Isaac Asimov",
-    hasReviewed: true
-  },
-  {
-    id: "2",
-    title: "Neuromancer",
-    author: "William Gibson",
-    hasReviewed: false
-  },
-  {
-    id: "3",
-    title: "The Martian",
-    author: "Andy Weir",
-    hasReviewed: false
-  }
-];
+interface ClubBook {
+  id: string;
+  title: string;
+  author: string;
+  hasReviewed: boolean;
+}
 
-// Mock data for reviews
-const mockReviews = [
-  {
-    id: "1",
-    bookId: "1",
-    bookTitle: "Foundation",
-    bookAuthor: "Isaac Asimov",
-    rating: 4,
-    text: "A fascinating look at the future of humanity spanning centuries. Asimov's vision of psychohistory and the ability to predict the behavior of large populations is thought-provoking, even if some of the character development feels thin by modern standards.",
-    reviewer: "You",
-    date: "April 12, 2023"
-  },
-  {
-    id: "2",
-    bookId: "1",
-    bookTitle: "Foundation",
-    bookAuthor: "Isaac Asimov",
-    rating: 5,
-    text: "A masterpiece of science fiction that continues to resonate today. The concept of psychohistory and the fall and rise of civilizations makes for an epic story spanning generations.",
-    reviewer: "John Doe",
-    date: "April 10, 2023"
-  },
-  {
-    id: "3",
-    bookId: "1",
-    bookTitle: "Foundation",
-    bookAuthor: "Isaac Asimov",
-    rating: 3,
-    text: "While the concepts are brilliant, I found some of the writing and character development a bit dated. Still an important read for any sci-fi fan.",
-    reviewer: "Jane Smith",
-    date: "April 15, 2023"
-  }
-];
+interface BookReview {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  bookAuthor: string;
+  rating: number;
+  text: string;
+  reviewer: string;
+  date: string;
+}
 
 const ClubReviews = () => {
-  const [reviews, setReviews] = useState(mockReviews);
+  const { clubId } = useParams<{ clubId: string }>();
+  const { user } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedBook, setSelectedBook] = useState<(typeof mockCompletedBooks)[0] | null>(null);
+  const [selectedBook, setSelectedBook] = useState<ClubBook | null>(null);
   const [newReview, setNewReview] = useState({
     rating: 0,
     text: ""
   });
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const openReviewDialog = (book: typeof selectedBook) => {
+  const { 
+    data: completedBooks, 
+    isLoading: loadingBooks,
+    error: booksError
+  } = useQuery({
+    queryKey: ['clubBooks', clubId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('club_books')
+        .select(`
+          id,
+          book_id,
+          books:book_id (
+            id,
+            title,
+            author
+          )
+        `)
+        .eq('club_id', clubId);
+      
+      if (error) throw error;
+      
+      const booksWithReviewStatus: ClubBook[] = [];
+      
+      for (const book of data) {
+        const { data: existingReview } = await supabase
+          .from('book_reviews')
+          .select('id')
+          .eq('book_id', book.book_id)
+          .eq('profile_id', user?.id)
+          .eq('club_id', clubId);
+        
+        booksWithReviewStatus.push({
+          id: book.book_id,
+          title: book.books.title,
+          author: book.books.author,
+          hasReviewed: existingReview && existingReview.length > 0
+        });
+      }
+      
+      return booksWithReviewStatus;
+    },
+    enabled: !!clubId && !!user?.id,
+  });
+
+  const {
+    data: reviews,
+    isLoading: loadingReviews,
+    error: reviewsError
+  } = useQuery({
+    queryKey: ['bookReviews', clubId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('book_reviews')
+        .select(`
+          id,
+          book_id,
+          profile_id,
+          rating,
+          review_text,
+          created_at,
+          books:book_id (
+            id,
+            title,
+            author
+          ),
+          profiles:profile_id (
+            name
+          )
+        `)
+        .eq('club_id', clubId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      return data.map(review => ({
+        id: review.id,
+        bookId: review.book_id,
+        bookTitle: review.books.title,
+        bookAuthor: review.books.author,
+        rating: review.rating,
+        text: review.review_text,
+        reviewer: review.profiles.name || 'Anonymous User',
+        date: new Date(review.created_at).toLocaleDateString('en-US', { 
+          month: 'long', 
+          day: 'numeric', 
+          year: 'numeric' 
+        })
+      }));
+    },
+    enabled: !!clubId,
+  });
+
+  const submitReviewMutation = useMutation({
+    mutationFn: async (reviewData: {
+      bookId: string;
+      rating: number;
+      text: string;
+    }) => {
+      const { data: existingReview } = await supabase
+        .from('book_reviews')
+        .select('id')
+        .eq('book_id', reviewData.bookId)
+        .eq('profile_id', user?.id)
+        .eq('club_id', clubId);
+      
+      if (existingReview && existingReview.length > 0) {
+        const { data, error } = await supabase
+          .from('book_reviews')
+          .update({
+            rating: reviewData.rating,
+            review_text: reviewData.text,
+          })
+          .eq('id', existingReview[0].id)
+          .select();
+        
+        if (error) throw error;
+        return data;
+      } else {
+        const { data, error } = await supabase
+          .from('book_reviews')
+          .insert({
+            book_id: reviewData.bookId,
+            profile_id: user?.id,
+            club_id: clubId,
+            rating: reviewData.rating,
+            review_text: reviewData.text,
+          })
+          .select();
+        
+        if (error) throw error;
+        return data;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookReviews', clubId] });
+      queryClient.invalidateQueries({ queryKey: ['clubBooks', clubId] });
+      
+      setIsDialogOpen(false);
+      
+      toast({
+        title: "Review submitted",
+        description: `Your review for "${selectedBook?.title}" has been added.`,
+      });
+    },
+    onError: (error) => {
+      console.error("Error submitting review:", error);
+      toast({
+        title: "Error",
+        description: "There was an error submitting your review. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const openReviewDialog = (book: ClubBook) => {
     setSelectedBook(book);
-    setNewReview({ rating: 0, text: "" });
+    
+    if (book.hasReviewed && user?.id) {
+      supabase
+        .from('book_reviews')
+        .select('rating, review_text')
+        .eq('book_id', book.id)
+        .eq('profile_id', user.id)
+        .eq('club_id', clubId)
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) {
+            setNewReview({
+              rating: data.rating,
+              text: data.review_text
+            });
+          } else {
+            setNewReview({ rating: 0, text: "" });
+          }
+        });
+    } else {
+      setNewReview({ rating: 0, text: "" });
+    }
+    
     setIsDialogOpen(true);
   };
 
@@ -85,62 +229,66 @@ const ClubReviews = () => {
   };
 
   const handleSubmitReview = () => {
-    if (!selectedBook) return;
+    if (!selectedBook || !user?.id) return;
     
-    // Add the new review
-    const review = {
-      id: Date.now().toString(),
+    submitReviewMutation.mutate({
       bookId: selectedBook.id,
-      bookTitle: selectedBook.title,
-      bookAuthor: selectedBook.author,
       rating: newReview.rating,
-      text: newReview.text,
-      reviewer: "You",
-      date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-    };
-    
-    setReviews([review, ...reviews]);
-    
-    // Close the dialog and show success message
-    setIsDialogOpen(false);
-    
-    toast({
-      title: "Review submitted",
-      description: `Your review for "${selectedBook.title}" has been added.`,
+      text: newReview.text
     });
   };
 
+  if (booksError || reviewsError) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center">
+          <p className="text-destructive">Error loading reviews. Please try again later.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-8">
-      {/* Completed Books Section */}
       <div>
         <h2 className="text-xl font-semibold mb-4">Write a Review</h2>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-          {mockCompletedBooks.map((book) => (
-            <Card key={book.id} className="book-card overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-medium">{book.title}</h3>
-                    <p className="text-sm text-muted-foreground">{book.author}</p>
+        {loadingBooks ? (
+          <div className="flex justify-center p-6">
+            <p>Loading books...</p>
+          </div>
+        ) : completedBooks && completedBooks.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            {completedBooks.map((book) => (
+              <Card key={book.id} className="book-card overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-medium">{book.title}</h3>
+                      <p className="text-sm text-muted-foreground">{book.author}</p>
+                    </div>
+                    <BookOpen className="h-5 w-5 text-book-500" />
                   </div>
-                  <BookOpen className="h-5 w-5 text-book-500" />
-                </div>
-                
-                <Button
-                  onClick={() => openReviewDialog(book)}
-                  variant={book.hasReviewed ? "outline" : "default"}
-                  className={`w-full mt-4 ${!book.hasReviewed ? 'bg-book-600 hover:bg-book-700' : ''}`}
-                >
-                  {book.hasReviewed ? "Edit Review" : "Write Review"}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  
+                  <Button
+                    onClick={() => openReviewDialog(book)}
+                    variant={book.hasReviewed ? "outline" : "default"}
+                    className={`w-full mt-4 ${!book.hasReviewed ? 'bg-book-600 hover:bg-book-700' : ''}`}
+                  >
+                    {book.hasReviewed ? "Edit Review" : "Write Review"}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="p-6 text-center">
+              <p className="text-muted-foreground">No books have been added to this club yet.</p>
+            </CardContent>
+          </Card>
+        )}
         
-        {/* Review Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
@@ -184,20 +332,23 @@ const ClubReviews = () => {
               <Button
                 className="w-full bg-book-600 hover:bg-book-700"
                 onClick={handleSubmitReview}
-                disabled={newReview.rating === 0 || !newReview.text.trim()}
+                disabled={newReview.rating === 0 || !newReview.text.trim() || submitReviewMutation.isPending}
               >
-                Submit Review
+                {submitReviewMutation.isPending ? 'Submitting...' : 'Submit Review'}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
       
-      {/* Reviews List */}
       <div>
         <h2 className="text-xl font-semibold mb-4">Recent Reviews</h2>
         
-        {reviews.length > 0 ? (
+        {loadingReviews ? (
+          <div className="flex justify-center p-6">
+            <p>Loading reviews...</p>
+          </div>
+        ) : reviews && reviews.length > 0 ? (
           <div className="space-y-4">
             {reviews.map((review) => (
               <Card key={review.id}>

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const Navbar = () => {
-  const { user, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
   
   // Extract initials for avatar
@@ -66,14 +66,14 @@ const Navbar = () => {
                     <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                       <Avatar className="h-8 w-8">
                         <AvatarFallback className="bg-book-100 text-book-800">
-                          {user.name ? getInitials(user.name) : "U"}
+                          {profile?.name ? getInitials(profile.name) : "U"}
                         </AvatarFallback>
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-56" align="end" forceMount>
                     <div className="flex flex-col space-y-1 p-2">
-                      <p className="text-sm font-medium leading-none">{user.name}</p>
+                      <p className="text-sm font-medium leading-none">{profile?.name || 'User'}</p>
                       <p className="text-xs leading-none text-muted-foreground">
                         {user.email}
                       </p>

@@ -16,7 +16,6 @@ import Explore from "./pages/Explore";
 import ClubDetail from "./pages/club/ClubDetail";
 import ClubOverview from "./pages/club/ClubOverview";
 import ClubReadingList from "./pages/club/ClubReadingList";
-import ClubSuggestions from "./pages/club/ClubSuggestions";
 import ClubReviews from "./pages/club/ClubReviews";
 import BookDetail from "./pages/BookDetail";
 import Profile from "./pages/Profile";
@@ -41,7 +40,6 @@ const App = () => (
                 <Route path="/clubs/:clubId" element={<ClubDetail />}>
                   <Route index element={<ClubOverview />} />
                   <Route path="reading-list" element={<ClubReadingList />} />
-                  <Route path="suggestions" element={<ClubSuggestions />} />
                   <Route path="reviews" element={<ClubReviews />} />
                 </Route>
                 <Route path="/books/:bookId" element={<BookDetail />} />

@@ -2,8 +2,6 @@ import { Link } from "react-router-dom";
 import { Lock, Globe } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
 
 export type ClubCardProps = {
   id: string;
@@ -20,6 +18,7 @@ export type ClubCardProps = {
     };
   };
   showJoin?: boolean;
+  onJoin?: () => void;
 };
 
 const ClubCard = ({ 
@@ -29,18 +28,14 @@ const ClubCard = ({
   memberCount, 
   isPublic = true, 
   currentBook,
-  showJoin = false 
+  showJoin = false,
+  onJoin 
 }: ClubCardProps) => {
-  const { toast } = useToast();
-  const navigate = useNavigate();
-
   const handleJoin = (e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent card click navigation
-    toast({
-      title: "Joined club",
-      description: `You have successfully joined ${name}`,
-    });
-    navigate('/dashboard');
+    e.preventDefault();
+    if (onJoin) {
+      onJoin();
+    }
   };
 
   return (
@@ -85,7 +80,7 @@ const ClubCard = ({
           >
             View Club
           </Link>
-          {showJoin && (
+          {showJoin && onJoin && (
             <Button
               onClick={handleJoin}
               className="flex-1 bg-book-600 hover:bg-book-700"

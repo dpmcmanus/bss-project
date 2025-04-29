@@ -1,61 +1,108 @@
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Outlet, NavLink, useNavigate } from "react-router-dom";
-import { BookOpen, User, MessageSquare, Star } from "lucide-react";
+import { BookOpen, User, Star } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
-// Mock data
-const mockClubs = [
-  {
-    id: "1",
-    name: "Science Fiction Lovers",
-    description: "A club dedicated to exploring the vast worlds of science fiction literature, from classic to contemporary works that push the boundaries of imagination.",
-    memberCount: 4,
-    currentBook: {
-      id: "101",
-      title: "Dune",
-      author: "Frank Herbert",
-      progress: 45,
-      goal: {
-        chapter: 10,
-        date: "May 14"
-      }
-    }
-  },
-  {
-    id: "2",
-    name: "Mystery & Thriller Club",
-    description: "For those who enjoy page-turning suspense and clever mysteries.",
-    memberCount: 3,
-    currentBook: {
-      id: "102",
-      title: "The Silent Patient",
-      author: "Alex Michaelides",
-      progress: 65,
-      goal: {
-        chapter: 2,
-        date: "May 17"
-      }
+export type ClubType = {
+  id: string;
+  name: string;
+  description: string;
+  memberCount: number;
+  currentBook?: {
+    id: string;
+    title: string;
+    author: string;
+    progress?: number;
+    goal?: {
+      chapter: number;
+      date: string;
     }
   }
-];
+};
 
 const ClubDetail = () => {
   const { clubId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [club, setClub] = useState<ClubType | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Find the club from mock data
-  const club = mockClubs.find(c => c.id === clubId);
-  
-  // Redirect to 404 if club not found
   useEffect(() => {
-    if (!club) {
-      navigate("/404");
+    if (clubId && user) {
+      fetchClubDetails();
     }
-  }, [club, navigate]);
+  }, [clubId, user]);
+  
+  const fetchClubDetails = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Fetch club details
+      const { data: clubData, error: clubError } = await supabase
+        .from('clubs')
+        .select('*')
+        .eq('id', clubId)
+        .single();
+        
+      if (clubError) throw clubError;
+      
+      // Get member count
+      const { count: memberCount } = await supabase
+        .from('club_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('club_id', clubId);
+      
+      // Get current book
+      const { data: bookData } = await supabase
+        .from('club_books')
+        .select(`
+          book:books (
+            id,
+            title,
+            author
+          ),
+          goal_chapter,
+          goal_date
+        `)
+        .eq('club_id', clubId)
+        .eq('is_current_book', true)
+        .single();
+      
+      // Create club object
+      const clubWithDetails: ClubType = {
+        id: clubData.id,
+        name: clubData.name,
+        description: clubData.description,
+        memberCount: memberCount || 0,
+        currentBook: bookData ? {
+          id: bookData.book.id,
+          title: bookData.book.title,
+          author: bookData.book.author,
+          goal: bookData.goal_chapter ? {
+            chapter: bookData.goal_chapter,
+            date: new Date(bookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          } : undefined
+        } : undefined
+      };
+      
+      setClub(clubWithDetails);
+    } catch (error) {
+      console.error("Error fetching club details:", error);
+      navigate("/404");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  if (isLoading) {
+    return <ClubSkeleton />;
+  }
   
   if (!club) {
-    return <ClubSkeleton />;
+    return <div className="text-center p-8">Club not found</div>;
   }
 
   return (
@@ -88,16 +135,6 @@ const ClubDetail = () => {
           </NavLink>
           
           <NavLink
-            to={`/clubs/${clubId}/suggestions`}
-            className={({ isActive }) =>
-              `club-nav-link ${isActive ? 'active' : ''}`
-            }
-          >
-            <MessageSquare className="h-4 w-4" />
-            <span>Suggestions</span>
-          </NavLink>
-          
-          <NavLink
             to={`/clubs/${clubId}/reviews`}
             className={({ isActive }) =>
               `club-nav-link ${isActive ? 'active' : ''}`
@@ -118,7 +155,6 @@ const ClubSkeleton = () => (
   <div>
     <Skeleton className="h-32 w-full rounded-lg mb-6" />
     <div className="flex gap-2 mb-6">
-      <Skeleton className="h-10 w-24" />
       <Skeleton className="h-10 w-24" />
       <Skeleton className="h-10 w-24" />
       <Skeleton className="h-10 w-24" />
