@@ -8,10 +8,11 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
-import { Search } from "lucide-react";
+import { Search, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 import ClubCard from "@/components/ClubCard";
 
 const Explore = () => {
@@ -22,83 +23,98 @@ const Explore = () => {
   const [myClubIds, setMyClubIds] = useState(new Set());
   const { user } = useAuth();
   const { toast } = useToast();
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch public clubs and user's club memberships
-  useEffect(() => {
-    const fetchClubs = async () => {
-      try {
-        setIsLoading(true);
-        
-        // Fetch user's club memberships first
-        if (user) {
-          const { data: memberData } = await supabase
-            .from('club_members')
-            .select('club_id')
-            .eq('profile_id', user.id);
-            
-          if (memberData) {
-            setMyClubIds(new Set(memberData.map(m => m.club_id)));
-          }
+  const fetchClubs = async () => {
+    try {
+      setIsLoading(true);
+      
+      if (user) {
+        const { data: memberData } = await supabase
+          .from('club_members')
+          .select('club_id')
+          .eq('profile_id', user.id);
+          
+        if (memberData) {
+          setMyClubIds(new Set(memberData.map(m => m.club_id)));
         }
+      }
 
-        // Fetch public clubs with their member count and current book
-        const { data: clubsData, error: clubsError } = await supabase
-          .from('clubs')
-          .select(`
-            id,
-            name,
-            description,
-            is_public,
-            club_members (count),
-            club_books!inner (
-              books (
-                title,
-                author
-              ),
-              goal_chapter,
-              goal_date,
-              is_current_book
-            )
-          `)
-          .eq('is_public', true)
-          .eq('club_books.is_current_book', true);
+      // Modified query to get accurate member counts
+      const { data: clubsData, error: clubsError } = await supabase
+        .from('clubs')
+        .select(`
+          id,
+          name,
+          description,
+          is_public,
+          club_books (
+            books (
+              title,
+              author
+            ),
+            goal_chapter,
+            goal_date,
+            is_current_book
+          )
+        `)
+        .eq('is_public', true);
 
-        if (clubsError) throw clubsError;
+      if (clubsError) throw clubsError;
 
-        // Transform the data to match ClubCard props
-        const transformedClubs = clubsData.map(club => ({
+      // Get member counts separately for more accurate results
+      const memberCountPromises = clubsData.map(club => 
+        supabase
+          .from('club_members')
+          .select('id', { count: 'exact', head: true })
+          .eq('club_id', club.id)
+      );
+      
+      const memberCountResults = await Promise.all(memberCountPromises);
+      
+      const transformedClubs = clubsData.map((club, index) => {
+        const currentBookData = club.club_books?.find(book => book.is_current_book);
+        
+        return {
           id: club.id,
           name: club.name,
           description: club.description,
           isPublic: club.is_public,
-          memberCount: club.club_members?.[0]?.count || 0,
-          currentBook: club.club_books?.[0] ? {
-            title: club.club_books[0].books.title,
-            author: club.club_books[0].books.author,
-            goal: club.club_books[0].goal_chapter ? {
-              chapter: club.club_books[0].goal_chapter,
-              date: new Date(club.club_books[0].goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          memberCount: memberCountResults[index].count || 0,
+          currentBook: currentBookData ? {
+            title: currentBookData.books?.title,
+            author: currentBookData.books?.author,
+            goal: currentBookData.goal_chapter ? {
+              chapter: currentBookData.goal_chapter,
+              date: new Date(currentBookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
             } : undefined
           } : undefined
-        }));
+        };
+      });
 
-        setPublicClubs(transformedClubs);
-      } catch (error) {
-        console.error('Error fetching clubs:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load book clubs. Please try again.",
-          variant: "destructive"
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      setPublicClubs(transformedClubs);
+    } catch (error) {
+      console.error('Error fetching clubs:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load book clubs. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
 
+  useEffect(() => {
     fetchClubs();
   }, [user]);
 
-  // Handle joining a club
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchClubs();
+  };
+
   const handleJoinClub = async (clubId: string) => {
     if (!user) {
       toast({
@@ -135,7 +151,6 @@ const Explore = () => {
     }
   };
 
-  // Filter and sort clubs
   const filteredClubs = publicClubs
     .filter(club => !myClubIds.has(club.id))
     .filter(club => 
@@ -178,6 +193,16 @@ const Explore = () => {
             <SelectItem value="alphabetical">Alphabetical</SelectItem>
           </SelectContent>
         </Select>
+
+        <Button 
+          variant="outline" 
+          size="icon" 
+          onClick={handleRefresh} 
+          disabled={isLoading || refreshing}
+          className="h-10 w-10 shrink-0"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
       {isLoading ? (
@@ -196,6 +221,7 @@ const Explore = () => {
                 {...club} 
                 showJoin={true}
                 onJoin={() => handleJoinClub(club.id)}
+                showViewButton={false}
               />
             ))}
           </div>

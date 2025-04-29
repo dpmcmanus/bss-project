@@ -1,14 +1,23 @@
 
 import { useState, useEffect } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { BookOpen, Plus } from "lucide-react";
+import { BookOpen, Plus, Trash2, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger
+} from "@/components/ui/dialog";
 import type { ClubType } from "./ClubDetail";
 
 type ClubMember = {
@@ -22,12 +31,16 @@ type ClubContextType = {
 };
 
 const ClubOverview = () => {
+  const navigate = useNavigate();
   const { club } = useOutletContext<ClubContextType>();
   const { user } = useAuth();
   const { toast } = useToast();
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [isCurrentUserAdmin, setIsCurrentUserAdmin] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   
   useEffect(() => {
     if (club) {
@@ -60,6 +73,14 @@ const ClubOverview = () => {
       }));
       
       setMembers(formattedMembers);
+
+      // Check if current user is an admin
+      if (user) {
+        const isAdmin = formattedMembers.some(member => 
+          member.id === user.id && member.is_admin
+        );
+        setIsCurrentUserAdmin(isAdmin);
+      }
     } catch (error) {
       console.error("Error fetching club members:", error);
     } finally {
@@ -84,6 +105,76 @@ const ClubOverview = () => {
         description: "Failed to send invitation.",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleLeaveClub = async () => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('club_members')
+        .delete()
+        .eq('club_id', club.id)
+        .eq('profile_id', user.id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Success",
+        description: "You have left the club.",
+      });
+      
+      // Navigate back to dashboard
+      navigate('/dashboard');
+    } catch (error) {
+      console.error("Error leaving club:", error);
+      toast({
+        title: "Error",
+        description: "Failed to leave the club.",
+        variant: "destructive"
+      });
+    } finally {
+      setShowLeaveDialog(false);
+    }
+  };
+  
+  const handleDeleteClub = async () => {
+    if (!isCurrentUserAdmin) return;
+    
+    try {
+      // First delete all club_members
+      const { error: memberError } = await supabase
+        .from('club_members')
+        .delete()
+        .eq('club_id', club.id);
+        
+      if (memberError) throw memberError;
+      
+      // Then delete the club itself
+      const { error: clubError } = await supabase
+        .from('clubs')
+        .delete()
+        .eq('id', club.id);
+        
+      if (clubError) throw clubError;
+      
+      toast({
+        title: "Club deleted",
+        description: "The club has been successfully deleted.",
+      });
+      
+      // Navigate back to dashboard
+      navigate('/dashboard');
+    } catch (error) {
+      console.error("Error deleting club:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete the club.",
+        variant: "destructive"
+      });
+    } finally {
+      setShowDeleteDialog(false);
     }
   };
 
@@ -182,6 +273,66 @@ const ClubOverview = () => {
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Club Management Section */}
+        <Card>
+          <CardContent className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Club Management</h2>
+            <div className="space-y-4">
+              {/* Leave Club Button - Show only for non-admin members */}
+              {user && !isCurrentUserAdmin && (
+                <>
+                  <Dialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" className="w-full">
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Leave Club
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Leave Club</DialogTitle>
+                        <DialogDescription>
+                          Are you sure you want to leave this club? You'll need to be invited back to rejoin.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowLeaveDialog(false)}>Cancel</Button>
+                        <Button variant="destructive" onClick={handleLeaveClub}>Leave Club</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              )}
+              
+              {/* Delete Club Button - Show only for admins */}
+              {isCurrentUserAdmin && (
+                <>
+                  <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                    <DialogTrigger asChild>
+                      <Button variant="destructive" className="w-full">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Club
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Delete Club</DialogTitle>
+                        <DialogDescription>
+                          Are you sure you want to delete this club? This action cannot be undone and all club data will be permanently lost.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+                        <Button variant="destructive" onClick={handleDeleteClub}>Delete Club</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

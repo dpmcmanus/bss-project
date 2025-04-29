@@ -1,3 +1,4 @@
+
 import { Link } from "react-router-dom";
 import { Lock, Globe } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -19,6 +20,7 @@ export type ClubCardProps = {
   };
   showJoin?: boolean;
   onJoin?: () => void;
+  showViewButton?: boolean;
 };
 
 const ClubCard = ({ 
@@ -29,7 +31,8 @@ const ClubCard = ({
   isPublic = true, 
   currentBook,
   showJoin = false,
-  onJoin 
+  onJoin,
+  showViewButton = true
 }: ClubCardProps) => {
   const handleJoin = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -74,12 +77,14 @@ const ClubCard = ({
       
       <CardFooter className="pt-0">
         <div className="w-full flex gap-2">
-          <Link 
-            to={`/clubs/${id}`} 
-            className="flex-1 px-4 py-2 text-sm text-center text-book-600 hover:text-book-700 hover:bg-book-50 transition-colors rounded-md"
-          >
-            View Club
-          </Link>
+          {showViewButton && (
+            <Link 
+              to={`/clubs/${id}`} 
+              className="flex-1 px-4 py-2 text-sm text-center text-book-600 hover:text-book-700 hover:bg-book-50 transition-colors rounded-md"
+            >
+              View Club
+            </Link>
+          )}
           {showJoin && onJoin && (
             <Button
               onClick={handleJoin}

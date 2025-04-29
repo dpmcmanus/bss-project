@@ -12,10 +12,25 @@ export const supabase = createClient<Database>(
   SUPABASE_PUBLISHABLE_KEY,
   {
     auth: {
-      persistSession: true
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storageKey: 'book-club-auth-token',
+      storage: localStorage
     },
     db: {
       schema: 'public'
+    },
+    global: {
+      headers: {
+        'x-application-name': 'book-club-app'
+      }
+    },
+    // Enhanced realtime settings for better persistence
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
     }
   }
 );

@@ -11,6 +11,7 @@ export type ClubType = {
   name: string;
   description: string;
   memberCount: number;
+  isPublic?: boolean;
   currentBook?: {
     id: string;
     title: string;
@@ -29,10 +30,13 @@ const ClubDetail = () => {
   const { user } = useAuth();
   const [club, setClub] = useState<ClubType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMember, setIsMember] = useState(false);
+  const [isPublic, setIsPublic] = useState(false);
   
   useEffect(() => {
     if (clubId && user) {
       fetchClubDetails();
+      checkMembership();
     }
   }, [clubId, user]);
   
@@ -48,6 +52,9 @@ const ClubDetail = () => {
         .single();
         
       if (clubError) throw clubError;
+      
+      // Save if club is public
+      setIsPublic(clubData.is_public);
       
       // Get member count
       const { count: memberCount } = await supabase
@@ -76,6 +83,7 @@ const ClubDetail = () => {
         id: clubData.id,
         name: clubData.name,
         description: clubData.description,
+        isPublic: clubData.is_public,
         memberCount: memberCount || 0,
         currentBook: bookData ? {
           id: bookData.book.id,
@@ -96,6 +104,51 @@ const ClubDetail = () => {
       setIsLoading(false);
     }
   };
+
+  const checkMembership = async () => {
+    if (!user || !clubId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('club_members')
+        .select('id')
+        .eq('club_id', clubId)
+        .eq('profile_id', user.id)
+        .single();
+        
+      if (error && error.code !== 'PGRST116') {
+        console.error("Error checking membership:", error);
+      }
+      
+      setIsMember(!!data);
+      
+      // Only redirect if user is not a member AND the club is private
+      if (!data && !isPublic) {
+        navigate('/dashboard');
+      }
+    } catch (error) {
+      console.error("Error checking membership:", error);
+    }
+  };
+  
+  const handleJoinClub = async () => {
+    if (!user || !clubId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('club_members')
+        .insert({
+          club_id: clubId,
+          profile_id: user.id
+        });
+        
+      if (error) throw error;
+      
+      setIsMember(true);
+    } catch (error) {
+      console.error("Error joining club:", error);
+    }
+  };
   
   if (isLoading) {
     return <ClubSkeleton />;
@@ -108,7 +161,17 @@ const ClubDetail = () => {
   return (
     <div className="animate-fade-in">
       <div className="rounded-lg overflow-hidden bg-gradient-to-r from-book-900 to-book-700 text-white p-8 mb-6">
-        <h1 className="text-3xl font-bold">{club.name}</h1>
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center">
+          <h1 className="text-3xl font-bold mb-2 md:mb-0">{club.name}</h1>
+          {!isMember && (
+            <button 
+              onClick={handleJoinClub} 
+              className="py-2 px-4 bg-white text-book-900 rounded-md hover:bg-opacity-90 transition-colors mt-2 md:mt-0"
+            >
+              Join Club
+            </button>
+          )}
+        </div>
       </div>
       
       <div className="mb-6 overflow-x-auto">
@@ -124,29 +187,33 @@ const ClubDetail = () => {
             <span>Overview</span>
           </NavLink>
           
-          <NavLink
-            to={`/clubs/${clubId}/reading-list`}
-            className={({ isActive }) =>
-              `club-nav-link ${isActive ? 'active' : ''}`
-            }
-          >
-            <BookOpen className="h-4 w-4" />
-            <span>Reading List</span>
-          </NavLink>
-          
-          <NavLink
-            to={`/clubs/${clubId}/reviews`}
-            className={({ isActive }) =>
-              `club-nav-link ${isActive ? 'active' : ''}`
-            }
-          >
-            <Star className="h-4 w-4" />
-            <span>Reviews</span>
-          </NavLink>
+          {isMember && (
+            <>
+              <NavLink
+                to={`/clubs/${clubId}/reading-list`}
+                className={({ isActive }) =>
+                  `club-nav-link ${isActive ? 'active' : ''}`
+                }
+              >
+                <BookOpen className="h-4 w-4" />
+                <span>Reading List</span>
+              </NavLink>
+              
+              <NavLink
+                to={`/clubs/${clubId}/reviews`}
+                className={({ isActive }) =>
+                  `club-nav-link ${isActive ? 'active' : ''}`
+                }
+              >
+                <Star className="h-4 w-4" />
+                <span>Reviews</span>
+              </NavLink>
+            </>
+          )}
         </div>
       </div>
       
-      <Outlet context={{ club }} />
+      <Outlet context={{ club, isMember }} />
     </div>
   );
 };

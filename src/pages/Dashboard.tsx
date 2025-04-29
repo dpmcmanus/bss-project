@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +21,7 @@ const Dashboard = () => {
   });
   const [myClubs, setMyClubs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreatingClub, setIsCreatingClub] = useState(false);
   const { toast } = useToast();
   
   useEffect(() => {
@@ -37,7 +37,6 @@ const Dashboard = () => {
       setIsLoading(true);
       console.log("Fetching clubs for user:", user.id);
       
-      // Get clubs where user is a member
       const { data: memberData, error: memberError } = await supabase
         .from('club_members')
         .select('club_id')
@@ -48,17 +47,14 @@ const Dashboard = () => {
         throw memberError;
       }
       
-      // If no memberships, return empty array
       if (!memberData || memberData.length === 0) {
         setMyClubs([]);
         setIsLoading(false);
         return;
       }
       
-      // Get club ids from memberships
       const clubIds = memberData.map(item => item.club_id);
       
-      // Fetch club details
       const { data: clubsData, error: clubsError } = await supabase
         .from('clubs')
         .select('*')
@@ -69,10 +65,8 @@ const Dashboard = () => {
         throw clubsError;
       }
       
-      // Process clubs and fetch additional data
       const clubsWithData = await Promise.all(
         clubsData.map(async (club) => {
-          // Get member count
           const { count: memberCount, error: countError } = await supabase
             .from('club_members')
             .select('*', { count: 'exact', head: true })
@@ -82,7 +76,6 @@ const Dashboard = () => {
             console.error("Error fetching member count:", countError);
           }
             
-          // Get current book
           const { data: bookData, error: bookError } = await supabase
             .from('club_books')
             .select(`
@@ -136,37 +129,28 @@ const Dashboard = () => {
   };
   
   const handleCreateClub = async () => {
+    if (!user?.id) return;
+    
     try {
-      if (!user?.id) return;
+      setIsCreatingClub(true);
       
-      // Create a new club
-      const { data: clubData, error: clubError } = await supabase
-        .from('clubs')
-        .insert({
-          name: newClub.name,
-          description: newClub.description,
-          is_public: newClub.isPublic,
-          created_by: user.id
-        })
-        .select()
-        .single();
-        
-      if (clubError) throw clubError;
+      console.log("Creating club with settings:", {
+        name: newClub.name,
+        description: newClub.description,
+        is_public: newClub.isPublic,
+        created_by: user.id
+      });
       
-      // After club creation, a trigger will automatically add the creator as a member
-      // But we'll add it manually to ensure it works in all cases
-      const { error: memberError } = await supabase
-        .from('club_members')
-        .insert({
-          club_id: clubData.id,
-          profile_id: user.id,
-          is_admin: true
+      const { data, error } = await supabase
+        .rpc('create_club', {
+          club_name: newClub.name,
+          club_description: newClub.description,
+          club_is_public: newClub.isPublic
         });
-        
-      if (memberError) {
-        console.error("Error adding member:", memberError);
-        // We don't throw since the club was created successfully
-        // Just log and continue
+      
+      if (error) {
+        console.error("Error creating club:", error);
+        throw error;
       }
       
       toast({
@@ -182,7 +166,6 @@ const Dashboard = () => {
       
       setIsCreateDialogOpen(false);
       
-      // Refresh clubs list
       fetchMyClubs();
     } catch (error) {
       console.error("Error creating club:", error);
@@ -191,10 +174,11 @@ const Dashboard = () => {
         description: "Failed to create the club. Please try again.",
         variant: "destructive"
       });
+    } finally {
+      setIsCreatingClub(false);
     }
   };
 
-  // Show loading state if auth is still loading
   if (authLoading) {
     return <div className="flex items-center justify-center h-64">
       <div className="text-center">
@@ -204,7 +188,6 @@ const Dashboard = () => {
     </div>;
   }
 
-  // Show error state if no user or profile
   if (!user) {
     return <div className="text-center p-8">
       <p className="text-muted-foreground mb-4">You need to be logged in to view this page.</p>
@@ -268,9 +251,16 @@ const Dashboard = () => {
               <Button 
                 className="w-full bg-book-600 hover:bg-book-700"
                 onClick={handleCreateClub}
-                disabled={!newClub.name.trim() || !newClub.description.trim()}
+                disabled={!newClub.name.trim() || !newClub.description.trim() || isCreatingClub}
               >
-                Create Club
+                {isCreatingClub ? (
+                  <>
+                    <span className="animate-spin mr-2 h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></span>
+                    Creating...
+                  </>
+                ) : (
+                  "Create Club"
+                )}
               </Button>
             </div>
           </DialogContent>
