@@ -24,6 +24,16 @@ type PastBookType = {
   rating?: number;
 };
 
+type CurrentBookType = {
+  id: string;
+  title: string;
+  author: string;
+  goal?: {
+    chapter?: number;
+    date?: string;
+  };
+};
+
 const ClubReadingList = () => {
   const { club } = useOutletContext<ClubContextType>();
   const { user } = useAuth();
@@ -45,24 +55,64 @@ const ClubReadingList = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
-  const [currentBook, setCurrentBook] = useState(club?.currentBook);
+  const [currentBook, setCurrentBook] = useState<CurrentBookType | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     if (club && user) {
-      fetchPastBooks();
+      fetchBooks();
       checkIfAdmin();
-      setCurrentBook(club.currentBook);
-      console.log("Club currentBook set:", club.currentBook);
     }
   }, [club, user]);
 
-  const fetchPastBooks = async () => {
+  const fetchBooks = async () => {
     try {
       setIsLoading(true);
       
-      // Get past books (not current)
-      const { data, error } = await supabase
+      // Fetch the current book
+      const { data: currentBookData, error: currentBookError } = await supabase
+        .from('club_books')
+        .select(`
+          book:books (
+            id,
+            title,
+            author
+          ),
+          goal_chapter,
+          goal_date
+        `)
+        .eq('club_id', club.id)
+        .eq('is_current', true)
+        .maybeSingle();
+      
+      if (currentBookError) throw currentBookError;
+      
+      if (currentBookData) {
+        // Format the current book data
+        setCurrentBook({
+          id: currentBookData.book.id,
+          title: currentBookData.book.title,
+          author: currentBookData.book.author,
+          goal: {
+            chapter: currentBookData.goal_chapter || undefined,
+            date: currentBookData.goal_date ? new Date(currentBookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : undefined
+          }
+        });
+        console.log("Club currentBook set:", {
+          id: currentBookData.book.id,
+          title: currentBookData.book.title,
+          author: currentBookData.book.author,
+          goal: {
+            chapter: currentBookData.goal_chapter,
+            date: currentBookData.goal_date ? new Date(currentBookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : undefined
+          }
+        });
+      } else {
+        setCurrentBook(null);
+      }
+      
+      // Fetch past books
+      const { data: pastBooksData, error: pastBooksError } = await supabase
         .from('club_books')
         .select(`
           book:books (
@@ -72,13 +122,14 @@ const ClubReadingList = () => {
           )
         `)
         .eq('club_id', club.id)
-        .eq('is_current_book', false);
-        
-      if (error) throw error;
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false });
+      
+      if (pastBooksError) throw pastBooksError;
       
       // Get average ratings for books
       const booksWithRatings = await Promise.all(
-        data.map(async (item) => {
+        (pastBooksData || []).map(async (item) => {
           const { data: reviewData } = await supabase
             .from('book_reviews')
             .select('rating')
@@ -101,10 +152,10 @@ const ClubReadingList = () => {
       
       setPastBooks(booksWithRatings);
     } catch (error) {
-      console.error("Error fetching past books:", error);
+      console.error("Error fetching books:", error);
       toast({
         title: "Error",
-        description: "Failed to load past books.",
+        description: "Failed to load books.",
         variant: "destructive"
       });
     } finally {
@@ -114,16 +165,11 @@ const ClubReadingList = () => {
 
   const checkIfAdmin = async () => {
     try {
-      const { data, error } = await supabase
-        .from('club_members')
-        .select('is_admin')
-        .eq('club_id', club.id)
-        .eq('profile_id', user?.id)
-        .single();
+      const { data, error } = await supabase.rpc('is_club_admin', { club_uuid: club.id });
         
       if (error) throw error;
       
-      setIsAdmin(data.is_admin);
+      setIsAdmin(!!data);
     } catch (error) {
       console.error("Error checking admin status:", error);
     }
@@ -131,7 +177,7 @@ const ClubReadingList = () => {
 
   const handleAddBook = async () => {
     try {
-      if (!user?.id) return;
+      if (!user?.id || !club?.id) return;
       
       // First, create the book
       const { data: bookData, error: bookError } = await supabase
@@ -145,48 +191,35 @@ const ClubReadingList = () => {
         
       if (bookError) throw bookError;
       
-      // Make any current books not current
-      if (club.currentBook) {
-        const { error: updateError } = await supabase
-          .from('club_books')
-          .update({ is_current_book: false })
-          .eq('club_id', club.id)
-          .eq('is_current_book', true);
-          
-        if (updateError) throw updateError;
-      }
+      // Call the set_current_book function
+      const goalDate = newBook.goalDate ? new Date(newBook.goalDate).toISOString() : null;
+      const goalChapter = newBook.totalChapters ? parseInt(newBook.totalChapters) : null;
       
-      // Add the book to the club's reading list as current
-      const { data: clubBookData, error: clubBookError } = await supabase
-        .from('club_books')
-        .insert({
-          club_id: club.id,
-          book_id: bookData.id,
-          is_current_book: true,
-          goal_chapter: newBook.totalChapters ? parseInt(newBook.totalChapters) : null,
-          goal_date: newBook.goalDate || null,
-          added_by: user.id
-        })
-        .select();
-        
-      if (clubBookError) throw clubBookError;
+      const { data, error } = await supabase.rpc('set_current_book', {
+        p_club_id: club.id,
+        p_book_id: bookData.id,
+        p_goal_chapter: goalChapter,
+        p_goal_date: goalDate
+      });
+      
+      if (error) throw error;
       
       // Update local state with the new current book
       const newCurrentBook = {
         id: bookData.id,
         title: bookData.title,
         author: bookData.author,
-        goal: newBook.totalChapters || newBook.goalDate ? {
-          chapter: newBook.totalChapters ? parseInt(newBook.totalChapters) : undefined,
-          date: newBook.goalDate || undefined
-        } : undefined
+        goal: {
+          chapter: goalChapter || undefined,
+          date: newBook.goalDate ? new Date(newBook.goalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : undefined
+        }
       };
       
       setCurrentBook(newCurrentBook);
       
       toast({
         title: "Book added",
-        description: `${newBook.title} has been added to the reading list.`,
+        description: `${newBook.title} has been set as the current book.`,
       });
       
       setNewBook({
@@ -209,11 +242,11 @@ const ClubReadingList = () => {
 
   const handleEditBook = async () => {
     try {
-      if (!user?.id || !currentBook?.id) {
-        console.error("Missing user ID or current book ID");
+      if (!user?.id || !club?.id || !currentBook?.id) {
+        console.error("Missing user ID, club ID, or current book ID");
         toast({
           title: "Error",
-          description: "Could not identify book or user.",
+          description: "Could not identify book, club, or user.",
           variant: "destructive"
         });
         return;
@@ -221,7 +254,7 @@ const ClubReadingList = () => {
 
       console.log("Updating book with data:", editBook);
       
-      // 1. Update the book details in the books table
+      // Update the book details in the books table
       const { error: bookError } = await supabase
         .from('books')
         .update({
@@ -235,48 +268,30 @@ const ClubReadingList = () => {
         throw bookError;
       }
       
-      // 2. Find the club_books entry
-      const { data: clubBookData, error: fetchError } = await supabase
-        .from('club_books')
-        .select('id')
-        .eq('club_id', club.id)
-        .eq('book_id', currentBook.id)
-        .eq('is_current_book', true)
-        .maybeSingle();
-        
-      if (fetchError) {
-        console.error("Error fetching club book entry:", fetchError);
-        throw fetchError;
-      }
-
-      if (!clubBookData) {
-        console.error("Club book entry not found");
-        throw new Error("Current book entry not found");
-      }
-
-      // 3. Update goals in the club_books table
-      const { error: updateError } = await supabase
-        .from('club_books')
-        .update({
-          goal_chapter: editBook.totalChapters ? parseInt(editBook.totalChapters) : null,
-          goal_date: editBook.goalDate || null
-        })
-        .eq('id', clubBookData.id);
+      // Update the goal information using the function
+      const goalDate = editBook.goalDate ? new Date(editBook.goalDate).toISOString() : null;
+      const goalChapter = editBook.totalChapters ? parseInt(editBook.totalChapters) : null;
+      
+      const { error: updateError } = await supabase.rpc('update_current_book', {
+        p_club_id: club.id,
+        p_goal_chapter: goalChapter,
+        p_goal_date: goalDate
+      });
         
       if (updateError) {
-        console.error("Error updating club book goals:", updateError);
+        console.error("Error updating current book goals:", updateError);
         throw updateError;
       }
       
-      // 4. Update the local state with the edited book details
+      // Update the local state with the edited book details
       const updatedCurrentBook = {
         id: currentBook.id,
         title: editBook.title,
         author: editBook.author,
-        goal: editBook.totalChapters || editBook.goalDate ? {
-          chapter: editBook.totalChapters ? parseInt(editBook.totalChapters) : undefined,
-          date: editBook.goalDate || undefined
-        } : undefined
+        goal: {
+          chapter: goalChapter || undefined,
+          date: editBook.goalDate ? new Date(editBook.goalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : undefined
+        }
       };
       
       setCurrentBook(updatedCurrentBook);
@@ -306,7 +321,7 @@ const ClubReadingList = () => {
   };
 
   const handleCompleteBook = async () => {
-    if (!currentBook?.id || isCompleting) {
+    if (!currentBook?.id || !club?.id || isCompleting) {
       return;
     }
     
@@ -315,37 +330,17 @@ const ClubReadingList = () => {
 
       console.log("Completing book:", currentBook.id);
 
-      // 1. Find the club_books entry for the current book
-      const { data: clubBookData, error: fetchError } = await supabase
-        .from('club_books')
-        .select('id')
-        .eq('club_id', club.id)
-        .eq('book_id', currentBook.id)
-        .eq('is_current_book', true)
-        .maybeSingle();
+      // Call the complete_current_book function
+      const { error } = await supabase.rpc('complete_current_book', {
+        p_club_id: club.id
+      });
         
-      if (fetchError) {
-        console.error("Error fetching club book entry:", fetchError);
-        throw fetchError;
-      }
-
-      if (!clubBookData) {
-        console.error("Club book entry not found");
-        throw new Error("Current book entry not found");
-      }
-
-      // 2. Update the club_books entry to mark as not current
-      const { error: updateError } = await supabase
-        .from('club_books')
-        .update({ is_current_book: false })
-        .eq('id', clubBookData.id);
-        
-      if (updateError) {
-        console.error("Error marking book as completed:", updateError);
-        throw updateError;
+      if (error) {
+        console.error("Error marking book as completed:", error);
+        throw error;
       }
       
-      // 3. Add the completed book to the past books list
+      // Add the completed book to the past books list
       const bookToAdd = {
         id: currentBook.id,
         title: currentBook.title,
@@ -355,7 +350,7 @@ const ClubReadingList = () => {
       
       setPastBooks(prev => [bookToAdd, ...prev]);
       
-      // 4. Clear the current book in local state
+      // Clear the current book in local state
       setCurrentBook(null);
       
       toast({

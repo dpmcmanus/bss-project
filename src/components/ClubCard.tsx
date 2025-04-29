@@ -21,6 +21,7 @@ export type ClubCardProps = {
   showJoin?: boolean;
   onJoin?: () => void;
   showViewButton?: boolean;
+  showMemberCount?: boolean;
 };
 
 const ClubCard = ({ 
@@ -32,7 +33,8 @@ const ClubCard = ({
   currentBook,
   showJoin = false,
   onJoin,
-  showViewButton = true
+  showViewButton = true,
+  showMemberCount = true
 }: ClubCardProps) => {
   const handleJoin = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -57,9 +59,11 @@ const ClubCard = ({
       <CardContent className="pb-2 flex-grow">
         <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{description}</p>
         
-        <div className="flex items-center mt-2">
-          <span className="text-xs text-muted-foreground">{memberCount} members</span>
-        </div>
+        {showMemberCount && (
+          <div className="flex items-center mt-2">
+            <span className="text-xs text-muted-foreground">{memberCount} members</span>
+          </div>
+        )}
         
         {currentBook && (
           <div className="mt-4">

@@ -1,14 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
-import { Search, RefreshCw } from "lucide-react";
+import { Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,13 +10,11 @@ import ClubCard from "@/components/ClubCard";
 
 const Explore = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortOption, setSortOption] = useState("most-members");
   const [isLoading, setIsLoading] = useState(true);
   const [publicClubs, setPublicClubs] = useState([]);
   const [myClubIds, setMyClubIds] = useState(new Set());
   const { user } = useAuth();
   const { toast } = useToast();
-  const [refreshing, setRefreshing] = useState(false);
 
   const fetchClubs = async () => {
     try {
@@ -55,7 +46,7 @@ const Explore = () => {
             ),
             goal_chapter,
             goal_date,
-            is_current_book
+            is_current
           )
         `)
         .eq('is_public', true);
@@ -73,7 +64,7 @@ const Explore = () => {
       const memberCountResults = await Promise.all(memberCountPromises);
       
       const transformedClubs = clubsData.map((club, index) => {
-        const currentBookData = club.club_books?.find(book => book.is_current_book);
+        const currentBookData = club.club_books?.find(book => book.is_current);
         
         return {
           id: club.id,
@@ -102,18 +93,12 @@ const Explore = () => {
       });
     } finally {
       setIsLoading(false);
-      setRefreshing(false);
     }
   };
 
   useEffect(() => {
     fetchClubs();
   }, [user]);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchClubs();
-  };
 
   const handleJoinClub = async (clubId: string) => {
     if (!user) {
@@ -157,14 +142,7 @@ const Explore = () => {
       club.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
       club.description.toLowerCase().includes(searchQuery.toLowerCase())
     )
-    .sort((a, b) => {
-      if (sortOption === "most-members") {
-        return b.memberCount - a.memberCount;
-      } else if (sortOption === "alphabetical") {
-        return a.name.localeCompare(b.name);
-      }
-      return 0;
-    });
+    .sort((a, b) => b.memberCount - a.memberCount); // Default sort by most members
 
   return (
     <div className="animate-fade-in">
@@ -183,26 +161,6 @@ const Explore = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        
-        <Select value={sortOption} onValueChange={setSortOption}>
-          <SelectTrigger className="w-full md:w-[180px]">
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="most-members">Most Members</SelectItem>
-            <SelectItem value="alphabetical">Alphabetical</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Button 
-          variant="outline" 
-          size="icon" 
-          onClick={handleRefresh} 
-          disabled={isLoading || refreshing}
-          className="h-10 w-10 shrink-0"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-        </Button>
       </div>
 
       {isLoading ? (
@@ -222,6 +180,7 @@ const Explore = () => {
                 showJoin={true}
                 onJoin={() => handleJoinClub(club.id)}
                 showViewButton={false}
+                showMemberCount={false}
               />
             ))}
           </div>

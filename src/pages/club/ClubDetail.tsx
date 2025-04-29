@@ -75,8 +75,8 @@ const ClubDetail = () => {
           goal_date
         `)
         .eq('club_id', clubId)
-        .eq('is_current_book', true)
-        .single();
+        .eq('is_current', true)
+        .maybeSingle();
       
       // Create club object
       const clubWithDetails: ClubType = {

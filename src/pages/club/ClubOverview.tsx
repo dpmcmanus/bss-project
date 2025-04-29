@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -30,6 +29,14 @@ type ClubContextType = {
   club: ClubType;
 };
 
+// New type for club invitations
+type ClubInvitation = {
+  id: string;
+  email: string;
+  club_id: string;
+  created_at: string;
+};
+
 const ClubOverview = () => {
   const navigate = useNavigate();
   const { club } = useOutletContext<ClubContextType>();
@@ -41,12 +48,61 @@ const ClubOverview = () => {
   const [isCurrentUserAdmin, setIsCurrentUserAdmin] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
+  const [invitations, setInvitations] = useState<ClubInvitation[]>([]);
   
   useEffect(() => {
     if (club) {
       fetchClubMembers();
+      fetchClubInvitations();
     }
   }, [club]);
+  
+  useEffect(() => {
+    if (!club?.id) return;
+    
+    // Set up realtime subscription for club_invitations with more specific filter
+    const invitationsChannel = supabase
+      .channel('club_invitations_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'club_invitations',
+          filter: `club_id=eq.${club.id}`
+        },
+        () => {
+          console.log("Club invitation change detected for club:", club.id);
+          fetchClubInvitations();
+        }
+      )
+      .subscribe();
+      
+    // Also listen for club_members changes to keep the members list up to date
+    const membersChannel = supabase
+      .channel('club_members_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'club_members',
+          filter: `club_id=eq.${club.id}`
+        },
+        () => {
+          console.log("Club member change detected for club:", club.id);
+          fetchClubMembers();
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription
+    return () => {
+      supabase.removeChannel(invitationsChannel);
+      supabase.removeChannel(membersChannel);
+    };
+  }, [club?.id]);
   
   const fetchClubMembers = async () => {
     try {
@@ -88,23 +144,109 @@ const ClubOverview = () => {
     }
   };
   
-  const handleInvite = async () => {
+  const fetchClubInvitations = async () => {
+    if (!club.id) return;
+
     try {
-      // In a real app, you would send an invitation email
-      // For now, we'll just show a success message
+      const { data, error } = await supabase
+        .from('club_invitations')
+        .select('*')
+        .eq('club_id', club.id);
+
+      if (error) {
+        console.error("Error fetching club invitations:", error);
+        throw error;
+      }
+      
+      setInvitations(data || []);
+    } catch (error) {
+      console.error("Error fetching club invitations:", error);
+    }
+  };
+  
+  const handleInvite = async () => {
+    if (!inviteEmail || !club.id || !user) return;
+    
+    try {
+      setIsInviting(true);
+      
+      // Check if invitation already exists
+      const { data: existingInvite, error: inviteCheckError } = await supabase
+        .from('club_invitations')
+        .select('id')
+        .eq('club_id', club.id)
+        .ilike('email', inviteEmail)
+        .single();
+
+      if (inviteCheckError && inviteCheckError.code !== 'PGRST116') {
+        console.error("Error checking for existing invitation:", inviteCheckError);
+        throw inviteCheckError;
+      }
+
+      if (existingInvite) {
+        toast({
+          title: "Invitation already sent",
+          description: "An invitation has already been sent to this email.",
+          variant: "destructive"
+        });
+        setInviteEmail("");
+        return;
+      }
+
+      // Check if there are any club members with emails matching the invite email
+      // Since we can't access auth directly, we'll rely on club_members + profiles to check
+      const { data: existingMembers, error: membersError } = await supabase
+        .from('club_members')
+        .select(`
+          id,
+          profile_id
+        `)
+        .eq('club_id', club.id);
+      
+      if (membersError) {
+        console.error("Error checking for existing members:", membersError);
+        throw membersError;
+      }
+
+      if (existingMembers && existingMembers.length > 0) {
+        // Now we need to check if any of these profile_ids correspond to the email being invited
+        // Unfortunately, we can't directly query auth.users from the client
+        // As a workaround, we'll create the invitation anyway - the backend RLS will handle
+        // ensuring the right user can accept it based on their email
+        
+        console.log("Proceeding with invitation - membership check will happen when user accepts");
+      }
+
+      // Create invitation
+      const { error: inviteError } = await supabase
+        .from('club_invitations')
+        .insert({
+          club_id: club.id,
+          email: inviteEmail.toLowerCase(),
+          invited_by: user.id
+        });
+
+      if (inviteError) {
+        console.error("Error creating invitation:", inviteError);
+        throw inviteError;
+      }
+      
       toast({
         title: "Invitation sent",
         description: `An invitation has been sent to ${inviteEmail}.`,
       });
       
       setInviteEmail("");
+      // The realtime subscription will automatically update invitations
     } catch (error) {
       console.error("Error sending invitation:", error);
       toast({
         title: "Error",
-        description: "Failed to send invitation.",
+        description: "Failed to send invitation. Please try again.",
         variant: "destructive"
       });
+    } finally {
+      setIsInviting(false);
     }
   };
 
@@ -268,11 +410,34 @@ const ClubOverview = () => {
                   className="flex-1"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)} 
+                  type="email"
+                  disabled={isInviting}
                 />
-                <Button onClick={handleInvite} disabled={!inviteEmail}>
-                  <Plus className="h-4 w-4" />
+                <Button 
+                  onClick={handleInvite} 
+                  disabled={!inviteEmail || isInviting}
+                  className="bg-book-600 hover:bg-book-700"
+                >
+                  {isInviting ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
+              
+              {invitations.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Pending Invitations</h4>
+                  <ul className="space-y-2">
+                    {invitations.map(invitation => (
+                      <li key={invitation.id} className="text-xs text-muted-foreground">
+                        {invitation.email} (sent {new Date(invitation.created_at).toLocaleDateString()})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -94,30 +94,36 @@ export type Database = {
           added_by: string | null
           book_id: string
           club_id: string
+          completed_at: string | null
           goal_chapter: number | null
           goal_date: string | null
           id: string
-          is_current_book: boolean
+          is_current: boolean
+          status: string
         }
         Insert: {
           added_at?: string
           added_by?: string | null
           book_id: string
           club_id: string
+          completed_at?: string | null
           goal_chapter?: number | null
           goal_date?: string | null
           id?: string
-          is_current_book?: boolean
+          is_current?: boolean
+          status?: string
         }
         Update: {
           added_at?: string
           added_by?: string | null
           book_id?: string
           club_id?: string
+          completed_at?: string | null
           goal_chapter?: number | null
           goal_date?: string | null
           id?: string
-          is_current_book?: boolean
+          is_current?: boolean
+          status?: string
         }
         Relationships: [
           {
@@ -139,6 +145,45 @@ export type Database = {
             columns: ["club_id"]
             isOneToOne: false
             referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      club_invitations: {
+        Row: {
+          club_id: string
+          created_at: string
+          email: string
+          id: string
+          invited_by: string | null
+        }
+        Insert: {
+          club_id: string
+          created_at?: string
+          email: string
+          id?: string
+          invited_by?: string | null
+        }
+        Update: {
+          club_id?: string
+          created_at?: string
+          email?: string
+          id?: string
+          invited_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_invitations_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_invitations_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -249,6 +294,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      complete_current_book: {
+        Args: { p_club_id: string }
+        Returns: boolean
+      }
       create_club: {
         Args: {
           club_name: string
@@ -261,8 +310,37 @@ export type Database = {
         Args: { club_uuid: string }
         Returns: boolean
       }
+      is_club_admin: {
+        Args: { club_uuid: string }
+        Returns: boolean
+      }
+      is_club_member: {
+        Args: { club_uuid: string }
+        Returns: boolean
+      }
+      is_invited_to_club: {
+        Args: { club_uuid: string; email_address: string }
+        Returns: boolean
+      }
       is_member_of_club: {
         Args: { club_uuid: string }
+        Returns: boolean
+      }
+      set_current_book: {
+        Args: {
+          p_club_id: string
+          p_book_id: string
+          p_goal_chapter?: number
+          p_goal_date?: string
+        }
+        Returns: string
+      }
+      update_current_book: {
+        Args: {
+          p_club_id: string
+          p_goal_chapter?: number
+          p_goal_date?: string
+        }
         Returns: boolean
       }
     }

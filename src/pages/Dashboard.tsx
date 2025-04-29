@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import ClubCard from "@/components/ClubCard";
+import ClubInvitationList from "@/components/ClubInvitationList";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +31,84 @@ const Dashboard = () => {
       fetchMyClubs();
     }
   }, [user]);
+  
+  useEffect(() => {
+    if (!user?.email) return;
+
+    // Set up realtime subscriptions for multiple tables that might affect the dashboard
+    
+    // Listen for club_invitations changes
+    const invitationsChannel = supabase
+      .channel('dashboard_invitations_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', 
+          schema: 'public',
+          table: 'club_invitations',
+        },
+        (payload) => {
+          console.log("Club invitation change detected:", payload.eventType);
+          
+          // For all events, refresh the invitations list
+          const invitationList = document.querySelector('.club-invitation-list');
+          if (invitationList) {
+            console.log("Triggering invitation list refresh");
+            // Force a refresh by rerendering the component
+            invitationList.classList.add('refreshed');
+            setTimeout(() => {
+              invitationList.classList.remove('refreshed');
+            }, 100);
+          }
+          
+          // For insert/delete events, also refresh clubs if needed
+          if (payload.eventType === 'DELETE') {
+            fetchMyClubs(); // Refresh clubs when an invitation is accepted/declined
+          }
+        }
+      )
+      .subscribe();
+      
+    // Listen for club_members changes
+    const membersChannel = supabase
+      .channel('dashboard_members_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', 
+          schema: 'public',
+          table: 'club_members',
+        },
+        () => {
+          console.log("Club member change detected");
+          fetchMyClubs(); // Refresh clubs when membership changes
+        }
+      )
+      .subscribe();
+      
+    // Listen for clubs changes
+    const clubsChannel = supabase
+      .channel('dashboard_clubs_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', 
+          schema: 'public',
+          table: 'clubs',
+        },
+        () => {
+          console.log("Club change detected");
+          fetchMyClubs(); // Refresh clubs when details change
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(invitationsChannel);
+      supabase.removeChannel(membersChannel);
+      supabase.removeChannel(clubsChannel);
+    };
+  }, [user?.email]);
   
   const fetchMyClubs = async () => {
     if (!user) return;
@@ -88,7 +168,7 @@ const Dashboard = () => {
               goal_date
             `)
             .eq('club_id', club.id)
-            .eq('is_current_book', true)
+            .eq('is_current', true)
             .maybeSingle();
           
           if (bookError && bookError.code !== 'PGRST116') {
@@ -105,10 +185,9 @@ const Dashboard = () => {
               id: bookData.book.id,
               title: bookData.book.title,
               author: bookData.book.author,
-              progress: 0,
-              goal: bookData.goal_chapter ? {
+              goal: bookData.goal_chapter || bookData.goal_date ? {
                 chapter: bookData.goal_chapter,
-                date: new Date(bookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                date: bookData.goal_date ? new Date(bookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : undefined
               } : undefined
             } : undefined
           };
@@ -197,12 +276,17 @@ const Dashboard = () => {
 
   return (
     <div className="animate-fade-in">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-bold">My Book Clubs</h1>
-          <p className="text-muted-foreground">Manage your book clubs and reading activities</p>
-        </div>
-        
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <p className="text-muted-foreground">Welcome back, {profile?.name || 'Reader'}</p>
+      </div>
+      
+      <div className="club-invitation-list">
+        <ClubInvitationList />
+      </div>
+      
+      <div className="mb-6 flex justify-between items-center">
+        <h2 className="text-xl font-semibold">Your Book Clubs</h2>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-book-600 hover:bg-book-700">
@@ -268,7 +352,6 @@ const Dashboard = () => {
       </div>
 
       <div className="mb-12">
-        <h2 className="text-lg font-semibold mb-4">My Clubs</h2>
         {isLoading ? (
           <div className="flex justify-center p-12">
             <div className="text-center">
