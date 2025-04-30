@@ -31,9 +31,6 @@ const ClubList = ({ clubs, isLoading, onJoinClub }: ClubListProps) => {
     );
   }
 
-  // Debug to verify clubs data being passed to cards
-  console.log('Clubs being rendered:', clubs.map(club => ({ name: club.name, memberCount: club.memberCount })));
-
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       {clubs.map((club) => (
@@ -43,7 +40,7 @@ const ClubList = ({ clubs, isLoading, onJoinClub }: ClubListProps) => {
           showJoin={true}
           onJoin={() => onJoinClub(club.id)}
           showViewButton={false}
-          showMemberCount={false}
+          showMemberCount={true}
         />
       ))}
     </div>

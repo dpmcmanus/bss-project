@@ -23,12 +23,17 @@ export const useClubJoin = (onSuccess?: () => void) => {
       setJoiningClubId(clubId);
       
       // First check if the user is already a member of the club
-      const { data: existingMembership } = await supabase
+      const { data: existingMembership, error: membershipError } = await supabase
         .from('club_members')
         .select()
         .eq('club_id', clubId)
         .eq('profile_id', user.id)
-        .single();
+        .maybeSingle();
+      
+      if (membershipError) {
+        console.error('Error checking membership:', membershipError);
+        throw membershipError;
+      }
       
       // If the user is already a member, just show success and don't try to insert
       if (existingMembership) {

@@ -239,92 +239,60 @@ const Dashboard = () => {
     try {
       setIsCreatingClub(true);
       
-      console.log("Creating club directly with data:", {
+      console.log("Creating club with data:", {
         name: newClub.name,
         description: newClub.description,
         isPublic: newClub.isPublic
       });
       
-      // Check if the user already has a club with this name
-      const { data: existingClub, error: checkError } = await supabase
-        .from('clubs')
-        .select('id')
-        .eq('name', newClub.name)
-        .eq('created_by', user.id)
-        .maybeSingle();
-        
-      if (checkError) {
-        console.error("Error checking for existing club:", checkError);
-        throw checkError;
-      }
+      // Use the create_club database function with explicit type parameters
+      const { data, error } = await supabase.rpc('create_club', {
+        club_name: newClub.name,
+        club_description: newClub.description,
+        club_is_public: newClub.isPublic
+      });
       
-      if (existingClub) {
-        toast({
-          title: "Club already exists",
-          description: "You already have a club with this name.",
-          variant: "destructive"
-        });
+      if (error) {
+        console.error("Error creating club:", error);
+        
+        // Show a more specific error message if available
+        if (error.message.includes('club with this name')) {
+          toast({
+            title: "Club already exists",
+            description: "You already have a club with this name.",
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to create club. Please try again.",
+            variant: "destructive"
+          });
+        }
         return;
       }
       
-      // Create the club
-      const { data: clubData, error: clubError } = await supabase
-        .from('clubs')
-        .insert({
-          name: newClub.name,
-          description: newClub.description,
-          is_public: newClub.isPublic,
-          created_by: user.id
-        })
-        .select()
-        .single();
-      
-      if (clubError) {
-        console.error("Error creating club:", clubError);
-        throw clubError;
-      }
-      
-      const clubId = clubData.id;
+      const clubId = data;
       console.log("Club created successfully with ID:", clubId);
       
-      // Manually add the creator as an admin after club creation
-      try {
-        const { error: memberError } = await supabase
-          .from('club_members')
-          .upsert({
-            club_id: clubId,
-            profile_id: user.id,
-            is_admin: true
-          }, { 
-            onConflict: 'club_id,profile_id',
-            ignoreDuplicates: true 
-          });
-        
-        if (memberError) {
-          console.error("Error adding creator as club member:", memberError);
-        }
-        
-        // Close dialog and navigate to the club detail page
-        setIsCreateDialogOpen(false);
-        
-        toast({
-          title: "Club created",
-          description: `${newClub.name} has been created successfully.`,
-        });
-        
-        // Reset form
-        setNewClub({
-          name: "",
-          description: "",
-          isPublic: true
-        });
-        
-        // Navigate to the new club's overview page
-        navigate(`/clubs/${clubId}`);
-        
-      } catch (err) {
-        console.error("Failed to add creator as member:", err);
-      }
+      // Close dialog and show success message
+      setIsCreateDialogOpen(false);
+      
+      toast({
+        title: "Club created",
+        description: `${newClub.name} has been created successfully.`,
+      });
+      
+      // Reset form
+      setNewClub({
+        name: "",
+        description: "",
+        isPublic: true
+      });
+      
+      // Navigate to the new club's overview page
+      navigate(`/clubs/${clubId}`);
+      
     } catch (error) {
       console.error("Error creating club:", error);
       toast({

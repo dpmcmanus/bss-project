@@ -5,12 +5,15 @@ import { useClubData } from "@/hooks/useClubData";
 import { useClubJoin } from "@/hooks/useClubJoin";
 import SearchBar from "@/components/explore/SearchBar";
 import ClubList from "@/components/explore/ClubList";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Explore = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const { isLoading, publicClubs, myClubIds, fetchClubs } = useClubData();
   const { joinClub } = useClubJoin(fetchClubs);
+  const { isAuthenticated } = useAuth();
 
+  // Filter clubs: those not already joined by user and matching search query
   const filteredClubs = publicClubs
     .filter(club => !myClubIds.has(club.id))
     .filter(club => 
@@ -29,6 +32,12 @@ const Explore = () => {
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
       </div>
+
+      {!isAuthenticated && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-800">
+          <p>Sign in to join book clubs and access more features.</p>
+        </div>
+      )}
 
       <ClubList
         clubs={filteredClubs}

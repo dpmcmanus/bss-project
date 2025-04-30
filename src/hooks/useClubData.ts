@@ -16,17 +16,25 @@ export const useClubData = () => {
     try {
       setIsLoading(true);
       
+      // First, get the clubs the current user is a member of
       if (user) {
-        const { data: memberData } = await supabase
+        const { data: memberData, error: memberError } = await supabase
           .from('club_members')
           .select('club_id')
           .eq('profile_id', user.id);
           
+        if (memberError) {
+          console.error("Error fetching club memberships:", memberError);
+          throw memberError;
+        }
+        
         if (memberData) {
           setMyClubIds(new Set(memberData.map(m => m.club_id)));
         }
       }
 
+      // Get all clubs the user is allowed to see (based on RLS policies)
+      // With RLS in place, this will automatically filter to only public clubs or ones the user can access
       const { data: clubsData, error: clubsError } = await supabase
         .from('clubs')
         .select(`
@@ -45,12 +53,20 @@ export const useClubData = () => {
               author
             )
           )
-        `)
-        .eq('is_public', true);
+        `);
 
-      if (clubsError) throw clubsError;
+      if (clubsError) {
+        console.error("Error fetching clubs:", clubsError);
+        throw clubsError;
+      }
 
-      // Get member counts separately for more accurate results
+      if (!clubsData) {
+        setPublicClubs([]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Fetch member counts separately for each club
       const memberCountPromises = clubsData.map(club => 
         supabase
           .from('club_members')
@@ -60,15 +76,10 @@ export const useClubData = () => {
       
       const memberCountResults = await Promise.all(memberCountPromises);
       
-      // Add debugging to check the actual count values
-      console.log('Member count results:', memberCountResults.map(res => res.count));
-      
+      // Transform the club data with member counts
       const transformedClubs = clubsData.map((club, index) => {
         const currentBookData = club.club_books?.find(book => book.is_current);
         const memberCount = memberCountResults[index].count || 0;
-        
-        // Debug each club's member count
-        console.log(`Club ${club.name} has ${memberCount} members`);
         
         return {
           id: club.id,
