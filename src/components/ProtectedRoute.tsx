@@ -23,13 +23,15 @@ const ProtectedRoute = () => {
         setCheckingAccess(true);
         console.log("Checking access for club:", params.clubId, "User:", user.id);
         
-        // Check if user is a member of the club (using the is_club_member function)
+        // Use the RPC function to check membership instead of direct query
+        // This will ensure consistent behavior with backend functions
         const { data: isMember, error: memberError } = await supabase
           .rpc('is_club_member', { club_uuid: params.clubId });
         
         if (memberError) {
           console.error("Error checking club membership:", memberError);
-          throw memberError;
+          setHasAccess(false);
+          return;
         }
         
         console.log("Is member result:", isMember);
@@ -45,16 +47,15 @@ const ProtectedRoute = () => {
           .from('clubs')
           .select('is_public')
           .eq('id', params.clubId)
-          .single();
+          .maybeSingle();
         
-        if (clubError) {
+        if (clubError && clubError.code !== 'PGRST116') {
           console.error("Error checking if club is public:", clubError);
-          throw clubError;
+          setHasAccess(false);
+          return;
         }
         
-        console.log("Club data:", clubData);
-        
-        if (clubData.is_public) {
+        if (clubData?.is_public) {
           console.log("Club is public, allowing access");
           setHasAccess(true);
           return;
@@ -72,7 +73,8 @@ const ProtectedRoute = () => {
             
           if (invitedError) {
             console.error("Error checking club invitation:", invitedError);
-            throw invitedError;
+            setHasAccess(false);
+            return;
           }
           
           console.log("Is invited result:", isInvited);
@@ -97,12 +99,21 @@ const ProtectedRoute = () => {
     
     if (isAuthenticated && !isLoading) {
       checkClubAccess();
+    } else if (!isAuthenticated && !isLoading) {
+      setHasAccess(false);
     }
   }, [isAuthenticated, isLoading, location.pathname, params.clubId, user]);
 
   // Show loading state while checking auth or access
   if (isLoading || (isAuthenticated && checkingAccess)) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-book-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Checking access...</p>
+        </div>
+      </div>
+    );
   }
 
   // Redirect to sign-in if not authenticated

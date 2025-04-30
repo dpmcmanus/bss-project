@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { BookOpen, Plus, Trash2, LogOut } from "lucide-react";
+import { BookOpen, Plus, LogOut, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -46,10 +46,11 @@ const ClubOverview = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [isCurrentUserAdmin, setIsCurrentUserAdmin] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
   const [invitations, setInvitations] = useState<ClubInvitation[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   useEffect(() => {
     if (club) {
@@ -280,30 +281,25 @@ const ClubOverview = () => {
       setShowLeaveDialog(false);
     }
   };
-  
+
+  // Updated function to handle club deletion using the database function
   const handleDeleteClub = async () => {
-    if (!isCurrentUserAdmin) return;
+    if (!user || !isCurrentUserAdmin) return;
     
     try {
-      // First delete all club_members
-      const { error: memberError } = await supabase
-        .from('club_members')
-        .delete()
-        .eq('club_id', club.id);
-        
-      if (memberError) throw memberError;
+      setIsDeleting(true);
       
-      // Then delete the club itself
-      const { error: clubError } = await supabase
-        .from('clubs')
-        .delete()
-        .eq('id', club.id);
-        
-      if (clubError) throw clubError;
+      // Call the delete_club database function
+      const { data, error } = await supabase
+        .rpc('delete_club', { 
+          p_club_id: club.id 
+        });
+      
+      if (error) throw error;
       
       toast({
-        title: "Club deleted",
-        description: "The club has been successfully deleted.",
+        title: "Success",
+        description: "Club has been deleted successfully.",
       });
       
       // Navigate back to dashboard
@@ -312,9 +308,10 @@ const ClubOverview = () => {
       console.error("Error deleting club:", error);
       toast({
         title: "Error",
-        description: "Failed to delete the club.",
+        description: "Failed to delete the club. Please try again.",
         variant: "destructive"
       });
+      setIsDeleting(false);
     } finally {
       setShowDeleteDialog(false);
     }
@@ -473,8 +470,8 @@ const ClubOverview = () => {
                 </>
               )}
               
-              {/* Delete Club Button - Show only for admins */}
-              {isCurrentUserAdmin && (
+              {/* Delete Club Button - Show only for admin users */}
+              {user && isCurrentUserAdmin && (
                 <>
                   <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
                     <DialogTrigger asChild>
@@ -487,12 +484,18 @@ const ClubOverview = () => {
                       <DialogHeader>
                         <DialogTitle>Delete Club</DialogTitle>
                         <DialogDescription>
-                          Are you sure you want to delete this club? This action cannot be undone and all club data will be permanently lost.
+                          Are you sure you want to delete this club? This action cannot be undone and all club data will be permanently removed.
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>
                         <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
-                        <Button variant="destructive" onClick={handleDeleteClub}>Delete Club</Button>
+                        <Button 
+                          variant="destructive" 
+                          onClick={handleDeleteClub}
+                          disabled={isDeleting}
+                        >
+                          {isDeleting ? 'Deleting...' : 'Delete Club'}
+                        </Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>

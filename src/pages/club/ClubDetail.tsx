@@ -5,6 +5,7 @@ import { BookOpen, User, Star } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 export type ClubType = {
   id: string;
@@ -25,23 +26,34 @@ export type ClubType = {
 };
 
 const ClubDetail = () => {
-  const { clubId } = useParams();
+  const { clubId } = useParams<{clubId: string}>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [club, setClub] = useState<ClubType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMember, setIsMember] = useState(false);
   const [isPublic, setIsPublic] = useState(false);
+  const { toast } = useToast();
   
   useEffect(() => {
-    if (clubId && user) {
-      fetchClubDetails();
-      checkMembership();
+    if (!clubId) {
+      navigate('/dashboard');
+      return;
+    }
+    
+    if (user) {
+      // First check if the user is a member to avoid unnecessary redirects
+      checkMembership().then(membershipResult => {
+        if (membershipResult) {
+          fetchClubDetails();
+        }
+      });
     }
   }, [clubId, user]);
   
   const fetchClubDetails = async () => {
     try {
+      console.log("Fetching club details for club ID:", clubId);
       setIsLoading(true);
       
       // Fetch club details
@@ -51,7 +63,18 @@ const ClubDetail = () => {
         .eq('id', clubId)
         .single();
         
-      if (clubError) throw clubError;
+      if (clubError) {
+        console.error("Error fetching club details:", clubError);
+        toast({
+          title: "Error",
+          description: "Failed to load club details. Please try again.",
+          variant: "destructive"
+        });
+        navigate("/dashboard");
+        return;
+      }
+      
+      console.log("Club data retrieved:", clubData);
       
       // Save if club is public
       setIsPublic(clubData.is_public);
@@ -66,13 +89,14 @@ const ClubDetail = () => {
       const { data: bookData } = await supabase
         .from('club_books')
         .select(`
+          id,
+          goal_chapter,
+          goal_date,
           book:books (
             id,
             title,
             author
-          ),
-          goal_chapter,
-          goal_date
+          )
         `)
         .eq('club_id', clubId)
         .eq('is_current', true)
@@ -91,43 +115,100 @@ const ClubDetail = () => {
           author: bookData.book.author,
           goal: bookData.goal_chapter ? {
             chapter: bookData.goal_chapter,
-            date: new Date(bookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            date: bookData.goal_date ? new Date(bookData.goal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : undefined
           } : undefined
         } : undefined
       };
       
+      console.log("Club with details:", clubWithDetails);
       setClub(clubWithDetails);
     } catch (error) {
-      console.error("Error fetching club details:", error);
-      navigate("/404");
+      console.error("Error in fetchClubDetails:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive"
+      });
+      navigate("/dashboard");
     } finally {
       setIsLoading(false);
     }
   };
 
   const checkMembership = async () => {
-    if (!user || !clubId) return;
+    if (!user || !clubId) return false;
     
     try {
+      console.log("Checking membership for club:", clubId, "User:", user.id);
+      
       const { data, error } = await supabase
-        .from('club_members')
-        .select('id')
-        .eq('club_id', clubId)
-        .eq('profile_id', user.id)
-        .single();
+        .rpc('is_club_member', { club_uuid: clubId });
         
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error("Error checking membership:", error);
+        return false;
       }
       
+      console.log("Is member result:", data);
       setIsMember(!!data);
       
-      // Only redirect if user is not a member AND the club is private
-      if (!data && !isPublic) {
-        navigate('/dashboard');
+      // If user is a member, they have access
+      if (data) {
+        console.log("User is a club member, allowing access");
+        return true;
       }
+      
+      // If not a member, check if club is public
+      const { data: clubData, error: clubError } = await supabase
+        .from('clubs')
+        .select('is_public')
+        .eq('id', clubId)
+        .single();
+        
+      if (clubError) {
+        console.error("Error checking if club is public:", clubError);
+        return false;
+      }
+      
+      console.log("Club data:", clubData);
+      setIsPublic(clubData.is_public);
+      
+      if (clubData.is_public) {
+        console.log("Club is public, allowing access");
+        return true;
+      }
+      
+      // If user has email, check for invitations
+      if (user.email) {
+        console.log("Checking for invitations for email:", user.email);
+        
+        const { data: isInvited, error: invitedError } = await supabase
+          .rpc('is_invited_to_club', { 
+            club_uuid: clubId, 
+            email_address: user.email 
+          });
+          
+        if (invitedError) {
+          console.error("Error checking club invitation:", invitedError);
+          return false;
+        }
+        
+        console.log("Is invited result:", isInvited);
+        
+        if (isInvited) {
+          console.log("User has an invitation, allowing access");
+          return true;
+        }
+      }
+      
+      // No access if not public, not a member, and no invitation
+      console.log("User has no access to this private club");
+      navigate("/dashboard");
+      return false;
     } catch (error) {
-      console.error("Error checking membership:", error);
+      console.error("Error in checkMembership:", error);
+      navigate("/dashboard");
+      return false;
     }
   };
   
@@ -142,11 +223,28 @@ const ClubDetail = () => {
           profile_id: user.id
         });
         
-      if (error) throw error;
+      if (error) {
+        console.error("Error joining club:", error);
+        toast({
+          title: "Error",
+          description: "Failed to join the club. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
       
       setIsMember(true);
+      toast({
+        title: "Success",
+        description: "You have successfully joined the club.",
+      });
     } catch (error) {
       console.error("Error joining club:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive"
+      });
     }
   };
   

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,13 +22,12 @@ const SignUp = () => {
 
     try {
       await signUp(name, email, password);
-      // We don't immediately redirect since the user might need to confirm their email
-      // depending on Supabase settings. The AuthContext will handle the redirect after
-      // authentication completes.
       toast({
         title: "Account created",
-        description: "Your account has been created successfully.",
+        description: "Your account has been created. Please sign in.",
       });
+      // Redirect to sign in page after successful registration
+      navigate("/signin");
     } catch (error: any) {
       console.error("Signup error:", error);
       toast({

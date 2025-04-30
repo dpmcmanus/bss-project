@@ -298,13 +298,9 @@ export type Database = {
         Args: { p_club_id: string }
         Returns: boolean
       }
-      create_club: {
-        Args: {
-          club_name: string
-          club_description: string
-          club_is_public: boolean
-        }
-        Returns: string
+      delete_club: {
+        Args: { p_club_id: string }
+        Returns: boolean
       }
       is_admin_of_club: {
         Args: { club_uuid: string }

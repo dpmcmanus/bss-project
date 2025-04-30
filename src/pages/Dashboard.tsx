@@ -12,6 +12,7 @@ import ClubInvitationList from "@/components/ClubInvitationList";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
   const { user, profile, isLoading: authLoading } = useAuth();
@@ -25,6 +26,7 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingClub, setIsCreatingClub] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   useEffect(() => {
     if (user) {
@@ -79,14 +81,19 @@ const Dashboard = () => {
           schema: 'public',
           table: 'club_members',
         },
-        () => {
-          console.log("Club member change detected");
-          fetchMyClubs(); // Refresh clubs when membership changes
+        (payload) => {
+          console.log("Club member change detected:", payload);
+          // Only refresh if the change is related to the current user
+          // Fix: Add type checking to ensure payload.new exists and has profile_id property
+          if (payload.new && typeof payload.new === 'object' && 'profile_id' in payload.new && payload.new.profile_id === user.id) {
+            console.log("Club member change for current user, refreshing clubs");
+            fetchMyClubs(); // Refresh clubs when membership changes
+          }
         }
       )
       .subscribe();
       
-    // Listen for clubs changes
+    // Listen for clubs changes - specifically INSERT events
     const clubsChannel = supabase
       .channel('dashboard_clubs_changes')
       .on(
@@ -96,9 +103,27 @@ const Dashboard = () => {
           schema: 'public',
           table: 'clubs',
         },
-        () => {
-          console.log("Club change detected");
-          fetchMyClubs(); // Refresh clubs when details change
+        (payload) => {
+          console.log("Club change detected:", payload);
+          
+          // Check if this club was created by the current user
+          // Fix: Add type checking to ensure payload properties exist
+          if (payload.eventType === 'INSERT' && 
+              payload.new && 
+              typeof payload.new === 'object' && 
+              'created_by' in payload.new && 
+              payload.new.created_by === user.id) {
+            console.log("New club created by current user, refreshing clubs");
+            // Add a small delay to ensure the club_members entry is also created
+            setTimeout(() => {
+              fetchMyClubs();
+            }, 1000);
+          }
+          
+          // Handle updates and deletes for clubs the user is a member of
+          if ((payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') && payload.old) {
+            fetchMyClubs(); // Refresh when clubs are updated or deleted
+          }
         }
       )
       .subscribe();
@@ -108,7 +133,7 @@ const Dashboard = () => {
       supabase.removeChannel(membersChannel);
       supabase.removeChannel(clubsChannel);
     };
-  }, [user?.email]);
+  }, [user?.email, user?.id]);
   
   const fetchMyClubs = async () => {
     if (!user) return;
@@ -147,6 +172,7 @@ const Dashboard = () => {
       
       const clubsWithData = await Promise.all(
         clubsData.map(async (club) => {
+          // Fetch actual member count directly from club_members table
           const { count: memberCount, error: countError } = await supabase
             .from('club_members')
             .select('*', { count: 'exact', head: true })
@@ -213,44 +239,97 @@ const Dashboard = () => {
     try {
       setIsCreatingClub(true);
       
-      console.log("Creating club with settings:", {
+      console.log("Creating club directly with data:", {
         name: newClub.name,
         description: newClub.description,
-        is_public: newClub.isPublic,
-        created_by: user.id
+        isPublic: newClub.isPublic
       });
       
-      const { data, error } = await supabase
-        .rpc('create_club', {
-          club_name: newClub.name,
-          club_description: newClub.description,
-          club_is_public: newClub.isPublic
-        });
-      
-      if (error) {
-        console.error("Error creating club:", error);
-        throw error;
+      // Check if the user already has a club with this name
+      const { data: existingClub, error: checkError } = await supabase
+        .from('clubs')
+        .select('id')
+        .eq('name', newClub.name)
+        .eq('created_by', user.id)
+        .maybeSingle();
+        
+      if (checkError) {
+        console.error("Error checking for existing club:", checkError);
+        throw checkError;
       }
       
-      toast({
-        title: "Club created",
-        description: `${newClub.name} has been created successfully.`,
-      });
+      if (existingClub) {
+        toast({
+          title: "Club already exists",
+          description: "You already have a club with this name.",
+          variant: "destructive"
+        });
+        return;
+      }
       
-      setNewClub({
-        name: "",
-        description: "",
-        isPublic: true
-      });
+      // Create the club
+      const { data: clubData, error: clubError } = await supabase
+        .from('clubs')
+        .insert({
+          name: newClub.name,
+          description: newClub.description,
+          is_public: newClub.isPublic,
+          created_by: user.id
+        })
+        .select()
+        .single();
       
-      setIsCreateDialogOpen(false);
+      if (clubError) {
+        console.error("Error creating club:", clubError);
+        throw clubError;
+      }
       
-      fetchMyClubs();
+      const clubId = clubData.id;
+      console.log("Club created successfully with ID:", clubId);
+      
+      // Manually add the creator as an admin after club creation
+      try {
+        const { error: memberError } = await supabase
+          .from('club_members')
+          .upsert({
+            club_id: clubId,
+            profile_id: user.id,
+            is_admin: true
+          }, { 
+            onConflict: 'club_id,profile_id',
+            ignoreDuplicates: true 
+          });
+        
+        if (memberError) {
+          console.error("Error adding creator as club member:", memberError);
+        }
+        
+        // Close dialog and navigate to the club detail page
+        setIsCreateDialogOpen(false);
+        
+        toast({
+          title: "Club created",
+          description: `${newClub.name} has been created successfully.`,
+        });
+        
+        // Reset form
+        setNewClub({
+          name: "",
+          description: "",
+          isPublic: true
+        });
+        
+        // Navigate to the new club's overview page
+        navigate(`/clubs/${clubId}`);
+        
+      } catch (err) {
+        console.error("Failed to add creator as member:", err);
+      }
     } catch (error) {
       console.error("Error creating club:", error);
       toast({
         title: "Error",
-        description: "Failed to create the club. Please try again.",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -362,7 +441,11 @@ const Dashboard = () => {
         ) : myClubs.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {myClubs.map((club) => (
-              <ClubCard key={club.id} {...club} />
+              <ClubCard 
+                key={club.id} 
+                {...club} 
+                deduplicateMembers={true}  
+              />
             ))}
           </div>
         ) : (

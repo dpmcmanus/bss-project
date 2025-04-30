@@ -1,9 +1,8 @@
 
 import { Link } from "react-router-dom";
-import { Lock, Globe } from "lucide-react";
+import { Lock, Globe, Book } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-
 export type ClubCardProps = {
   id: string;
   name: string;
@@ -23,18 +22,17 @@ export type ClubCardProps = {
   showViewButton?: boolean;
   showMemberCount?: boolean;
 };
-
-const ClubCard = ({ 
-  id, 
-  name, 
-  description, 
-  memberCount, 
-  isPublic = true, 
+const ClubCard = ({
+  id,
+  name,
+  description,
+  memberCount,
+  isPublic = true,
   currentBook,
   showJoin = false,
   onJoin,
   showViewButton = true,
-  showMemberCount = true
+  showMemberCount = false
 }: ClubCardProps) => {
   const handleJoin = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -43,65 +41,43 @@ const ClubCard = ({
     }
   };
 
-  return (
-    <Card className="book-card h-full flex flex-col">
-      <CardHeader className="pb-2">
+  // For debugging, explicitly log the memberCount value for this specific club
+  console.log(`Club "${name}" memberCount:`, memberCount);
+  return <Card className="book-card h-full flex flex-col">
+      <CardHeader className="pb-0">
         <div className="flex justify-between items-start">
           <h3 className="font-medium text-base line-clamp-1">{name}</h3>
-          {isPublic ? (
-            <Globe className="h-5 w-5 text-book-500 shrink-0" />
-          ) : (
-            <Lock className="h-5 w-5 text-book-500 shrink-0" />
-          )}
+          {isPublic ? <Globe className="h-5 w-5 text-book-500 shrink-0" /> : <Lock className="h-5 w-5 text-book-500 shrink-0" />}
         </div>
       </CardHeader>
       
-      <CardContent className="pb-2 flex-grow">
-        <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{description}</p>
+      <CardContent className="pt-2 pb-0 flex-grow flex flex-col justify-between space-y-4 py-[5px]">
+        <p className="text-sm text-muted-foreground line-clamp-2">{description}</p>
         
-        {showMemberCount && (
-          <div className="flex items-center mt-2">
-            <span className="text-xs text-muted-foreground">{memberCount} members</span>
-          </div>
-        )}
-        
-        {currentBook && (
-          <div className="mt-4">
-            <div className="text-sm font-medium">{currentBook.title}</div>
-            <div className="text-xs text-muted-foreground mb-2">{currentBook.author}</div>
+        {currentBook && <div>
+            <div className="flex items-center gap-1 mb-1">
+              <Book className="h-4 w-4 text-book-500" />
+              <span className="text-xs font-medium">Currently Reading</span>
+            </div>
+            <div className="text-sm font-medium line-clamp-1">{currentBook.title}</div>
+            <div className="text-xs text-muted-foreground line-clamp-1 mb-1">{currentBook.author}</div>
             
-            {currentBook.goal && (
-              <div className="mt-2 text-xs text-muted-foreground">
+            {currentBook.goal && <div className="text-xs text-muted-foreground">
                 Goal: Chapter {currentBook.goal.chapter} by {currentBook.goal.date}
-              </div>
-            )}
-          </div>
-        )}
+              </div>}
+          </div>}
       </CardContent>
       
-      <CardFooter className="pt-0">
-        <div className="w-full flex gap-2">
-          {showViewButton && (
-            <Link 
-              to={`/clubs/${id}`} 
-              className="flex-1 px-4 py-2 text-sm text-center text-book-600 hover:text-book-700 hover:bg-book-50 transition-colors rounded-md"
-            >
-              View Club
-            </Link>
-          )}
-          {showJoin && onJoin && (
-            <Button
-              onClick={handleJoin}
-              className="flex-1 bg-book-600 hover:bg-book-700"
-              size="sm"
-            >
+      <CardFooter className="pt-2">
+        <div className="w-full">
+          {showViewButton && <Button asChild variant="outline" className="w-full text-book-600 hover:text-book-700 hover:bg-book-50" size="sm">
+              <Link to={`/clubs/${id}`}>View Club</Link>
+            </Button>}
+          {showJoin && onJoin && <Button onClick={handleJoin} size="sm" className="w-full bg-book-600 hover:bg-book-700">
               Join Club
-            </Button>
-          )}
+            </Button>}
         </div>
       </CardFooter>
-    </Card>
-  );
+    </Card>;
 };
-
 export default ClubCard;
