@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -166,7 +167,17 @@ const ClubOverview = () => {
   };
   
   const handleInvite = async () => {
-    if (!inviteEmail || !club.id || !user) return;
+    if (!inviteEmail || !club.id || !user || !isCurrentUserAdmin) {
+      // If the user is not an admin, show an error message
+      if (!isCurrentUserAdmin) {
+        toast({
+          title: "Permission denied",
+          description: "Only club admins can send invitations.",
+          variant: "destructive"
+        });
+      }
+      return;
+    }
     
     try {
       setIsInviting(true);
@@ -399,43 +410,47 @@ const ClubOverview = () => {
               </div>
             )}
             
-            <div className="mt-6 space-y-4">
-              <h3 className="font-medium">Invite a new member</h3>
-              <div className="flex gap-2">
-                <Input 
-                  placeholder="Email address" 
-                  className="flex-1"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)} 
-                  type="email"
-                  disabled={isInviting}
-                />
-                <Button 
-                  onClick={handleInvite} 
-                  disabled={!inviteEmail || isInviting}
-                  className="bg-book-600 hover:bg-book-700"
-                >
-                  {isInviting ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-              
-              {invitations.length > 0 && (
-                <div className="mt-4">
-                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Pending Invitations</h4>
-                  <ul className="space-y-2">
-                    {invitations.map(invitation => (
-                      <li key={invitation.id} className="text-xs text-muted-foreground">
-                        {invitation.email} (sent {new Date(invitation.created_at).toLocaleDateString()})
-                      </li>
-                    ))}
-                  </ul>
+            {/* Only show invite UI to admins */}
+            {isCurrentUserAdmin && (
+              <div className="mt-6 space-y-4">
+                <h3 className="font-medium">Invite a new member</h3>
+                <div className="flex gap-2">
+                  <Input 
+                    placeholder="Email address" 
+                    className="flex-1"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)} 
+                    type="email"
+                    disabled={isInviting}
+                  />
+                  <Button 
+                    onClick={handleInvite} 
+                    disabled={!inviteEmail || isInviting}
+                    className="bg-book-600 hover:bg-book-700"
+                  >
+                    {isInviting ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+            
+            {/* Only show pending invitations to admins */}
+            {isCurrentUserAdmin && invitations.length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-muted-foreground mb-2">Pending Invitations</h4>
+                <ul className="space-y-2">
+                  {invitations.map(invitation => (
+                    <li key={invitation.id} className="text-xs text-muted-foreground">
+                      {invitation.email} (sent {new Date(invitation.created_at).toLocaleDateString()})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
 
