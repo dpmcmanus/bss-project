@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Book, Home, LogOut, Search, User } from "lucide-react";
+import { Book, Home, LogOut, Menu, Search, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,10 +12,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const Navbar = () => {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Extract initials for avatar
   const getInitials = (name: string) => {
@@ -36,6 +38,7 @@ const Navbar = () => {
               <span className="font-bold text-lg">Book Club</span>
             </Link>
             
+            {/* Desktop navigation */}
             <nav className="hidden md:flex items-center space-x-4">
               <Link 
                 to="/dashboard" 
@@ -59,6 +62,36 @@ const Navbar = () => {
           </div>
 
           <div className="flex items-center">
+            {/* Mobile menu button */}
+            <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+              <SheetTrigger asChild className="md:hidden mr-2">
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Toggle menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[240px] sm:w-[300px]">
+                <div className="flex flex-col space-y-4 py-4">
+                  <Link 
+                    to="/dashboard" 
+                    className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-book-100 hover:text-book-600 transition-colors"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <Home className="h-4 w-4 mr-2" />
+                    Dashboard
+                  </Link>
+                  <Link 
+                    to="/explore" 
+                    className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-book-100 hover:text-book-600 transition-colors"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <Search className="h-4 w-4 mr-2" />
+                    Explore
+                  </Link>
+                </div>
+              </SheetContent>
+            </Sheet>
+
             {user && (
               <div className="flex items-center">
                 <DropdownMenu>
